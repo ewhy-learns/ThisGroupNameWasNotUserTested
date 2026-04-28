@@ -7,12 +7,21 @@ type Props = {
   userId: string
 }
 
+type EditorProps = Props & {
+  initialStep?: number
+}
+
 const DEFAULT_TAGS = [
   'Running','Cycling','Football','Basketball','Tennis','Swimming','Hiking','Yoga','Gym','Climbing','Skiing','Snowboarding','Skateboarding','Surfing','Golf','Rowing','Dancing','Cooking','Photography','Travel','Reading','Gaming','Coding','Gardening','Painting','Music'
 ]
 
+// Vibes tags (social/contextual)
+export const VIBES_TAGS = [
+  'Child Supervision','Child Participation','Casual','Social','Competitive','LGBTIQ+','Mens','Womens','U25s','Retirees','Mums','Dads','Aboriginal/Torres Strait Islander','18+'
+]
+
 // Large explicit list of sports, hobbies and activities (no generated "Activity N" entries)
-const LARGE_TAGS = [
+export const LARGE_TAGS = [
   'Running','Trail Running','Road Running','Cycling','Mountain Biking','Road Cycling','Triathlon','Swimming','Open Water Swimming',
   'Kayaking','Canoeing','Stand-up Paddleboarding','Rowing','Sailing','Surfing','Kitesurfing','Windsurfing','Sailing (small boat)',
   'Hiking','Backpacking','Mountaineering','Climbing','Bouldering','Indoor Climbing','Trail Walking','Orienteering','Camping',
@@ -63,6 +72,18 @@ const LARGE_TAGS = [
   'Rock Balancing','Stone Skipping','Meditative Walking','Forest Bathing'
 ]
 
+    // A simple set of sports names to allow basic filtering (lowercase keys)
+    const SPORTS = new Set([
+      'running','trail running','road running','cycling','mountain biking','road cycling','triathlon','swimming','open water swimming',
+      'kayaking','canoeing','stand-up paddleboarding','rowing','sailing','surfing','kitesurfing','windsurfing',
+      'hiking','backpacking','mountaineering','climbing','bouldering','trail walking','orienteering','camping',
+      'skiing','snowboarding','cross-country skiing','ice skating','ice hockey','snowshoeing',
+      'soccer','football','rugby','american football','baseball','softball','cricket','lacrosse','field hockey',
+      'basketball','volleyball','beach volleyball','tennis','table tennis','squash','badminton','pickleball',
+      'golf','frisbee','ultimate frisbee','disc golf','bowling','curling','polo','boxing','kickboxing','martial arts',
+      'yoga','pilates','tai chi','dance','gym','weightlifting','powerlifting','crossfit','calisthenics','parkour','gymnastics',
+      'skateboarding','rollerblading','scootering','motorsports','karting','fishing','hunting','shooting','archery'
+    ])
 function sample<T>(arr: T[], k: number) {
   const res: T[] = []
   const used = new Set<number>()
@@ -77,7 +98,7 @@ function sample<T>(arr: T[], k: number) {
   return res
 }
 
-export default function ProfileModal({ open, onClose, userId }: Props) {
+export default function ProfileModal({ open, onClose, userId, initialStep }: EditorProps) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string[]>([])
   const [step, setStep] = useState<number>(1)
@@ -86,27 +107,62 @@ export default function ProfileModal({ open, onClose, userId }: Props) {
   const [gender, setGender] = useState<string>('Prefer not to say')
   const [toast, setToast] = useState<string | null>(null)
   const suggested = useMemo(() => getSuggestedTags(), [])
+  const singleMode = typeof initialStep === 'number'
 
   const largeList = useMemo(() => LARGE_TAGS, [])
 
   // initial displayed tags: 10 random picks
   const [displayedTags, setDisplayedTags] = useState<string[]>(() => sample(largeList, 10))
+  const [filterMode, setFilterMode] = useState<'both'|'sports'|'no-sports'>('both')
+
+  // vibes state
+  const [displayedVibes, setDisplayedVibes] = useState<string[]>(() => sample(VIBES_TAGS, 10))
+  const [selectedVibes, setSelectedVibes] = useState<string[]>([])
+
+  // Ensure displayedTags always contains up to 10 items matching current filter and excluding selected
+  function fillDisplayedTags(current: string[], selectedSet: Set<string>, mode?: 'both'|'sports'|'no-sports') {
+    const effectiveMode = mode ?? filterMode
+    const cur = current.filter(t => !selectedSet.has(t))
+    const need = 10 - cur.length
+    if (need <= 0) return cur.slice(0, 10)
+
+    let pool = largeList.filter(t => !selectedSet.has(t) && !cur.includes(t))
+    if (effectiveMode === 'sports') pool = pool.filter(t => SPORTS.has(t.toLowerCase()))
+    else if (effectiveMode === 'no-sports') pool = pool.filter(t => !SPORTS.has(t.toLowerCase()))
+
+    const add = sample(pool, need)
+    return [...cur, ...add]
+  }
 
   // load existing profile when opening for edit
   React.useEffect(() => {
     if (!open) return
+    // if caller requested a particular step (e.g. edit about/gender/interests), set it
+    if (initialStep && initialStep >= 1 && initialStep <= 4) {
+      setStep(initialStep)
+    } else {
+      setStep(1)
+    }
     try {
       const profile = getProfile(userId)
-      if (profile) {
+        if (profile) {
         setSelected(profile.tags ?? [])
         setAbout(profile.about ?? '')
         setAboutPublic(profile.aboutPublic === undefined ? true : !!profile.aboutPublic)
         setGender(profile.gender ?? 'Prefer not to say')
-        // refresh displayed tags to exclude already-selected
-        setDisplayedTags(sample(largeList.filter(t => !(profile.tags ?? []).includes(t)), 10))
+        // refresh displayed tags to exclude already-selected, and ensure 10 items
+        setDisplayedTags(() => fillDisplayedTags([], new Set(profile.tags ?? []), filterMode))
+        // load vibes if present
+        setSelectedVibes(profile.vibes ?? [])
+        setDisplayedVibes(() => {
+          const sel = new Set(profile.vibes ?? [])
+          const pool = VIBES_TAGS.filter(t => !sel.has(t))
+          return sample(pool, 10)
+        })
       } else {
-        // new open: reshuffle displayed tags
-        setDisplayedTags(sample(largeList, 10))
+        // new open: reshuffle displayed tags and ensure 10 items
+        setDisplayedTags(() => fillDisplayedTags([], new Set(), filterMode))
+        setDisplayedVibes(() => sample(VIBES_TAGS, 10))
         setSelected([])
         setAbout('')
         setAboutPublic(true)
@@ -125,17 +181,20 @@ export default function ProfileModal({ open, onClose, userId }: Props) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return allTags.filter(t => !selected.includes(t))
-    return allTags.filter(t => !selected.includes(t) && t.toLowerCase().includes(q))
-  }, [query, allTags, selected])
+    const base = !q ? allTags.filter(t => !selected.includes(t)) : allTags.filter(t => !selected.includes(t) && t.toLowerCase().includes(q))
+    // apply filterMode
+    if (filterMode === 'both') return base
+    if (filterMode === 'sports') return base.filter(t => SPORTS.has(t.toLowerCase()))
+    return base.filter(t => !SPORTS.has(t.toLowerCase()))
+  }, [query, allTags, selected, filterMode])
 
   const toggle = (tag: string) => {
     setSelected(prev => {
       const selecting = !prev.includes(tag)
       const next = selecting ? [...prev, tag] : prev.filter(x => x !== tag)
 
-      // remove from displayedTags so it disappears
-      setDisplayedTags(dt => dt.filter(t => t !== tag))
+      // update displayedTags to remove the tag and refill to 10 according to filter
+      setDisplayedTags(dt => fillDisplayedTags(dt.filter(t => t !== tag), new Set(next), filterMode))
 
       // persist to profile immediately (add or remove)
       try {
@@ -145,7 +204,7 @@ export default function ProfileModal({ open, onClose, userId }: Props) {
           const setTags = new Set<string>(existing)
           if (selecting) setTags.add(tag)
           else setTags.delete(tag)
-          saveProfile({ id: userId, tags: Array.from(setTags), about, aboutPublic, gender, completedAt: Date.now() })
+          saveProfile({ id: userId, tags: Array.from(setTags), vibes: selectedVibes, about, aboutPublic, gender, completedAt: Date.now() })
         }
       } catch (e) {
         console.warn('[ProfileModal] persist selected tag failed', e)
@@ -179,13 +238,38 @@ export default function ProfileModal({ open, onClose, userId }: Props) {
   }
 
   const refreshSuggestions = () => {
-    const pool = largeList.filter(t => !selected.includes(t))
-    setDisplayedTags(sample(pool, 10))
+    setDisplayedTags(() => fillDisplayedTags([], new Set(selected), filterMode))
+  }
+
+  const toggleVibe = (tag: string) => {
+    setSelectedVibes(prev => {
+      const selecting = !prev.includes(tag)
+      const next = selecting ? [...prev, tag] : prev.filter(x => x !== tag)
+      // remove from displayedVibes and refill
+      setDisplayedVibes(dv => {
+        const cur = dv.filter(t => t !== tag)
+        const need = 10 - cur.length
+        if (need <= 0) return cur.slice(0, 10)
+        const pool = VIBES_TAGS.filter(t => !next.includes(t) && !cur.includes(t))
+        return [...cur, ...sample(pool, need)]
+      })
+      // persist vibes immediately
+      try {
+        if (userId) {
+          const profile = getProfile(userId)
+          const p = { id: userId, tags: profile?.tags ?? [], vibes: next, about: profile?.about ?? '', aboutPublic: profile?.aboutPublic ?? true, gender: profile?.gender ?? 'Prefer not to say', completedAt: Date.now() }
+          saveProfile(p)
+        }
+      } catch (e) {
+        console.warn('[ProfileModal] persist selected vibe failed', e)
+      }
+      return next
+    })
   }
 
   const handleSave = () => {
-    // save profile (simple)
-    saveProfile({ id: userId, tags: selected, about, aboutPublic, gender, completedAt: Date.now() })
+    // save profile (simple) including vibes
+    saveProfile({ id: userId, tags: selected, vibes: selectedVibes, about, aboutPublic, gender, completedAt: Date.now() })
     setToast('Profile saved')
     setTimeout(() => setToast(null), 1800)
     // close after short delay to show toast
@@ -220,13 +304,24 @@ export default function ProfileModal({ open, onClose, userId }: Props) {
                 Add your favorite sports and hobbies to help the system recommend activities you might like in your area. You can always come back later and update this.
               </p>
 
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input className="input" placeholder="Search tags" value={query} onChange={e => setQuery(e.target.value)} />
                 <button type="button" className="btn ghost" onClick={refreshSuggestions}>Refresh</button>
               </div>
 
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-                {(query.trim() ? filtered : displayedTags).map(tag => (
+              {/* Filter controls: sports only / both / hide sports */}
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <button type="button" onClick={() => { const m: 'both'|'sports'|'no-sports' = 'both'; setFilterMode(m); setDisplayedTags(() => fillDisplayedTags([], new Set(selected), m)); }} className={filterMode === 'both' ? 'btn' : 'btn ghost'}>All</button>
+                <button type="button" onClick={() => { const m: 'both'|'sports'|'no-sports' = 'sports'; setFilterMode(m); setDisplayedTags(() => fillDisplayedTags([], new Set(selected), m)); }} className={filterMode === 'sports' ? 'btn' : 'btn ghost'}>Sports only</button>
+                <button type="button" onClick={() => { const m: 'both'|'sports'|'no-sports' = 'no-sports'; setFilterMode(m); setDisplayedTags(() => fillDisplayedTags([], new Set(selected), m)); }} className={filterMode === 'no-sports' ? 'btn' : 'btn ghost'}>Hide sports</button>
+              </div>
+
+              <h4 style={{ marginTop: 14, marginBottom: 8 }}>Recommended tags</h4>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                {(query.trim() ? filtered : (
+                  // apply filter to displayedTags as well
+                  filterMode === 'both' ? displayedTags : displayedTags.filter(t => filterMode === 'sports' ? SPORTS.has(t.toLowerCase()) : !SPORTS.has(t.toLowerCase()) )
+                )).map(tag => (
                   <button
                     key={tag}
                     type="button"
@@ -239,12 +334,15 @@ export default function ProfileModal({ open, onClose, userId }: Props) {
                 ))}
               </div>
 
-              {/* selected chips appear below suggestions */}
+              {/* Selected tags */}
               {selected.length > 0 && (
-                <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {selected.map(t => (
-                    <div key={t} className="chip" onClick={() => toggle(t)}>{t} ✕</div>
-                  ))}
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Selected tags</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {selected.map(t => (
+                      <div key={t} className="chip" onClick={() => toggle(t)}>{t} ✕</div>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -256,8 +354,17 @@ export default function ProfileModal({ open, onClose, userId }: Props) {
               )}
 
               <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                <button type="button" className="btn" onClick={() => setStep(2)} disabled={selected.length === 0}>Next</button>
-                <button type="button" className="btn ghost" onClick={onClose}>Skip</button>
+                {singleMode ? (
+                  <>
+                    <button type="button" className="btn" onClick={handleSave}>Save</button>
+                    <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" className="btn" onClick={() => setStep(2)} disabled={selected.length === 0}>Next</button>
+                    <button type="button" className="btn ghost" onClick={onClose}>Skip</button>
+                  </>
+                )}
               </div>
             </>
           ) : step === 2 ? (
@@ -278,12 +385,21 @@ export default function ProfileModal({ open, onClose, userId }: Props) {
               </div>
 
 
-              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                <button type="button" className="btn" onClick={() => setStep(3)}>Next</button>
-                <button type="button" className="btn ghost" onClick={() => setStep(1)}>Back</button>
-              </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                  {singleMode ? (
+                    <>
+                      <button type="button" className="btn" onClick={handleSave}>Save</button>
+                      <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="btn" onClick={() => setStep(3)}>Next</button>
+                      <button type="button" className="btn ghost" onClick={() => setStep(1)}>Back</button>
+                    </>
+                  )}
+                </div>
             </>
-          ) : (
+            ) : step === 3 ? (
             // Step 3: Gender
             <>
               <p style={{ marginTop: 0 }}>
@@ -303,12 +419,59 @@ export default function ProfileModal({ open, onClose, userId }: Props) {
                         </select>
               </div>
 
-              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                <button type="button" className="btn" onClick={handleSave}>Save</button>
-                <button type="button" className="btn ghost" onClick={() => setStep(2)}>Back</button>
-              </div>
-            </>
-          )}
+                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                  {singleMode ? (
+                    <>
+                      <button type="button" className="btn" onClick={handleSave}>Save</button>
+                      <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="btn" onClick={() => setStep(4)}>Next</button>
+                      <button type="button" className="btn ghost" onClick={() => setStep(2)}>Back</button>
+                    </>
+                  )}
+                </div>
+              </>
+            ) : step === 4 ? (
+              // Step 4: Vibes
+              <>
+                <p style={{ marginTop: 0 }}>Select the vibes that describe your typical sessions or intent. Refresh to see different suggested vibes.</p>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input className="input" placeholder="Filter vibes" value={''} onChange={() => {}} />
+                  <button type="button" className="btn ghost" onClick={() => setDisplayedVibes(() => sample(VIBES_TAGS.filter(v => !selectedVibes.includes(v)), 10))}>Refresh</button>
+                </div>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                  {displayedVibes.map(v => (
+                    <button key={v} type="button" onClick={() => toggleVibe(v)} className={"btn " + (selectedVibes.includes(v) ? '' : 'ghost')} style={{ padding: '6px 10px', fontSize: 13, borderRadius: 999 }}>{v}</button>
+                  ))}
+                </div>
+
+                {selectedVibes.length > 0 && (
+                  <div style={{ marginTop: 16 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Selected vibes</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {selectedVibes.map(v => <div key={v} className="chip" onClick={() => toggleVibe(v)}>{v} ✕</div>)}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                  {singleMode ? (
+                    <>
+                      <button type="button" className="btn" onClick={handleSave}>Save</button>
+                      <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="btn" onClick={handleSave}>Save</button>
+                      <button type="button" className="btn ghost" onClick={() => setStep(3)}>Back</button>
+                    </>
+                  )}
+                </div>
+              </>
+            ) : null}
         </div>
       </div>
     </div>

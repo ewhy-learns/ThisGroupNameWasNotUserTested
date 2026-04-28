@@ -6,7 +6,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    host: true
+    host: true,
+    // allow ngrok tunnel hostnames (and common ngrok domains)
+    allowedHosts: ['.ngrok-free.dev', '.ngrok.io']
   }
 })
 

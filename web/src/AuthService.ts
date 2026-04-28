@@ -53,6 +53,9 @@ export function logout() {
 // Profile helpers
 const PROFILE_KEY = 'demo1_profile_v1'
 const SUGGESTED_TAGS_KEY = 'demo1_suggested_tags_v1'
+const REG_DRAFT_KEY = 'demo1_registration_draft_v1'
+const EVENT_DRAFT_KEY = 'demo1_event_draft_v1'
+const EVENTS_KEY = 'demo1_events_v1'
 
 export type Profile = {
   id: string
@@ -61,6 +64,10 @@ export type Profile = {
   aboutPublic?: boolean
   gender?: string
   completedAt: number
+  // optional per-tag skill assessments; maps tag -> level. If a tag is absent, it's considered "Not assessed".
+  skillChecks?: { [tag: string]: 'Beginner' | 'Intermediate' | 'Advanced' }
+  // optional list of "vibes" (social/contextual tags)
+  vibes?: string[]
 }
 
 export function getProfile(id: string): Profile | null {
@@ -101,5 +108,107 @@ export function getSuggestedTags(): string[] {
   } catch {
     return []
   }
+}
+
+// registration draft helpers (persist form between sessions)
+export type RegistrationDraft = {
+  displayName?: string
+  yearOfBirth?: string
+  email?: string
+  phone?: string
+}
+
+export function readRegistrationDraft(): RegistrationDraft {
+  try {
+    const raw = localStorage.getItem(REG_DRAFT_KEY)
+    if (!raw) return {}
+    return JSON.parse(raw) as RegistrationDraft
+  } catch {
+    return {}
+  }
+}
+
+export function writeRegistrationDraft(draft: RegistrationDraft) {
+  try {
+    localStorage.setItem(REG_DRAFT_KEY, JSON.stringify(draft))
+  } catch {
+    // ignore
+  }
+}
+
+export function clearRegistrationDraft() {
+  try {
+    localStorage.removeItem(REG_DRAFT_KEY)
+  } catch {
+    // ignore
+  }
+}
+
+// Event drafts and storage
+export type EventDraft = {
+  id?: string
+  title?: string
+  activity?: string
+  location?: string
+  date?: string
+  startTime?: string
+  endTime?: string
+  visibility?: 'Public'|'Friends'|'Invitation only'
+  description?: string
+  suggestedExperience?: 'Beginner'|'Intermediate'|'Advanced'|undefined
+  participantsMin?: number
+  participantsMax?: number
+  cost?: string
+  equipment?: string
+  vibes?: string[]
+  photoDataUrl?: string | null
+  updatedAt?: number
+}
+
+export function readEventDraft(): EventDraft | null {
+  try {
+    const raw = localStorage.getItem(EVENT_DRAFT_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as EventDraft
+  } catch {
+    return null
+  }
+}
+
+export function saveEventDraft(draft: EventDraft) {
+  try {
+    draft.updatedAt = Date.now()
+    localStorage.setItem(EVENT_DRAFT_KEY, JSON.stringify(draft))
+  } catch {
+    // ignore
+  }
+}
+
+export function clearEventDraft() {
+  try { localStorage.removeItem(EVENT_DRAFT_KEY) } catch {}
+}
+
+export type EventItem = EventDraft & { id: string; createdAt: number }
+
+export function saveEvent(event: EventDraft) {
+  try {
+    const raw = localStorage.getItem(EVENTS_KEY)
+    const arr: EventItem[] = raw ? JSON.parse(raw) : []
+    const id = event.id ?? 'evt_' + Math.random().toString(36).slice(2,9)
+    const item: EventItem = { ...(event as any), id, createdAt: Date.now() }
+    arr.push(item)
+    localStorage.setItem(EVENTS_KEY, JSON.stringify(arr))
+    return item
+  } catch (e) {
+    console.warn('[AuthService] saveEvent failed', e)
+    return null
+  }
+}
+
+export function listEvents(): EventItem[] {
+  try {
+    const raw = localStorage.getItem(EVENTS_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
 }
 

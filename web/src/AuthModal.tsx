@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { accountExists, registerAccount, setLoggedInUser } from './AuthService'
+import { accountExists, registerAccount, setLoggedInUser, readRegistrationDraft, writeRegistrationDraft, clearRegistrationDraft } from './AuthService'
 
 type Props = {
   open: boolean
   onClose: () => void
   onLoginSuccess: (id: string) => void
+  initialMode?: 'login' | 'register'
 }
 
-export default function AuthModal({ open, onClose, onLoginSuccess }: Props) {
+export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }: Props) {
   const [id, setId] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -127,6 +128,13 @@ export default function AuthModal({ open, onClose, onLoginSuccess }: Props) {
     setPasswordConfirm('')
     setError(null)
 
+    // clear persisted draft now registration succeeded
+    try {
+      clearRegistrationDraft()
+    } catch (e) {
+      // ignore
+    }
+
     // auto-return to login after a short delay
     if (timerRef.current) {
       clearTimeout(timerRef.current)
@@ -138,6 +146,22 @@ export default function AuthModal({ open, onClose, onLoginSuccess }: Props) {
       timerRef.current = null
     }, 2500)
   }
+
+  // seed email when entering registration mode if no email present
+  useEffect(() => {
+    if (mode === 'register') {
+      if (!email || email.trim() === '') {
+        setEmail('username@une.edu.au')
+      }
+    }
+  }, [mode])
+
+  // allow parent to open modal in a specific mode
+  useEffect(() => {
+    if (!open) return
+    if (initialMode === 'register') setMode('register')
+    else if (initialMode === 'login') setMode('login')
+  }, [open, initialMode])
 
   const handleForgot = () => {
     // Prototype: no mail sent, just show a message
@@ -156,6 +180,31 @@ export default function AuthModal({ open, onClose, onLoginSuccess }: Props) {
       }
     }
   }, [])
+
+  // load registration draft when modal opens
+  useEffect(() => {
+    if (!open) return
+    try {
+      const draft = readRegistrationDraft()
+      if (draft) {
+        if (draft.displayName) setDisplayName(draft.displayName)
+        if (draft.yearOfBirth) setYearOfBirth(draft.yearOfBirth)
+        if (draft.email) setEmail(draft.email)
+        if (draft.phone) setPhone(draft.phone)
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [open])
+
+  // persist registration draft whenever registration fields change
+  useEffect(() => {
+    try {
+      writeRegistrationDraft({ displayName, yearOfBirth, email, phone })
+    } catch (e) {
+      // ignore
+    }
+  }, [displayName, yearOfBirth, email, phone])
 
   if (!open) return null
 

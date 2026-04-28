@@ -19,9 +19,9 @@ type Props = {
 export default function MapView({ zoom = 13 }: Props) {
   const mapEl = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
-  const userMarkerRef = useRef<L.Marker | null>(null)
+  const userMarkerRef = useRef<L.CircleMarker | null>(null)
+  const userPulseRef = useRef<L.CircleMarker | null>(null)
   const searchMarkerRef = useRef<L.Marker | null>(null)
-  const accuracyRef = useRef<L.Circle | null>(null)
   const [status, setStatus] = useState<string>('Locating...')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
@@ -99,19 +99,16 @@ export default function MapView({ zoom = 13 }: Props) {
 
             setTimeout(() => map.invalidateSize(), 300)
 
+            // Show a small solid blue dot plus a subtle pulsing halo
             if (userMarkerRef.current) {
               userMarkerRef.current.setLatLng([lat, lon])
             } else {
-              userMarkerRef.current = L.marker([lat, lon]).addTo(map).bindPopup('You are here')
-              userMarkerRef.current.openPopup()
+              userMarkerRef.current = L.circleMarker([lat, lon], { radius: 4, color: '#0B61FF', fillColor: '#0B61FF', fillOpacity: 1, weight: 0, className: 'user-dot' }).addTo(map)
             }
-
-            const accuracy = pos.coords.accuracy ?? 0
-            if (accuracyRef.current) {
-              accuracyRef.current.setLatLng([lat, lon])
-              accuracyRef.current.setRadius(accuracy)
+            if (userPulseRef.current) {
+              userPulseRef.current.setLatLng([lat, lon])
             } else {
-              accuracyRef.current = L.circle([lat, lon], { radius: accuracy, color: '#0366d6', opacity: 0.15 }).addTo(map)
+              userPulseRef.current = L.circleMarker([lat, lon], { radius: 14, color: '#0B61FF', fillColor: '#0B61FF', fillOpacity: 0.12, weight: 0, className: 'user-dot-pulse' }).addTo(map)
             }
           },
           (err) => {
@@ -124,7 +121,7 @@ export default function MapView({ zoom = 13 }: Props) {
               console.warn('[MapView] setting default UNE failed', e)
             }
           },
-          options || { enableHighAccuracy: false, maximumAge: 300000, timeout: 10000 }
+          options || { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
         )
       } catch (e) {
         console.warn('[MapView] geolocation request failed', e)
@@ -159,14 +156,14 @@ export default function MapView({ zoom = 13 }: Props) {
 
     // cleanup on unmount
     return () => {
-      // clean up markers and circle
+      // clean up markers
       if (userMarkerRef.current) {
         userMarkerRef.current.remove()
         userMarkerRef.current = null
       }
-      if (accuracyRef.current) {
-        accuracyRef.current.remove()
-        accuracyRef.current = null
+      if (userPulseRef.current) {
+        userPulseRef.current.remove()
+        userPulseRef.current = null
       }
       if (searchMarkerRef.current) {
         searchMarkerRef.current.remove()
@@ -242,20 +239,16 @@ export default function MapView({ zoom = 13 }: Props) {
             map.setView([lat, lon], 15)
           }
 
+          // Update/create the small dot and pulsing halo for recenter
           if (userMarkerRef.current) {
             userMarkerRef.current.setLatLng([lat, lon])
-            userMarkerRef.current.openPopup()
           } else {
-            userMarkerRef.current = L.marker([lat, lon]).addTo(map).bindPopup('You are here')
-            userMarkerRef.current.openPopup()
+            userMarkerRef.current = L.circleMarker([lat, lon], { radius: 4, color: '#0B61FF', fillColor: '#0B61FF', fillOpacity: 1, weight: 0, className: 'user-dot' }).addTo(map)
           }
-
-          const accuracy = pos.coords.accuracy ?? 0
-          if (accuracyRef.current) {
-            accuracyRef.current.setLatLng([lat, lon])
-            accuracyRef.current.setRadius(accuracy)
+          if (userPulseRef.current) {
+            userPulseRef.current.setLatLng([lat, lon])
           } else {
-            accuracyRef.current = L.circle([lat, lon], { radius: accuracy, color: '#0366d6', opacity: 0.15 }).addTo(map)
+            userPulseRef.current = L.circleMarker([lat, lon], { radius: 14, color: '#0B61FF', fillColor: '#0B61FF', fillOpacity: 0.12, weight: 0, className: 'user-dot-pulse' }).addTo(map)
           }
         },
           (err) => {
@@ -277,7 +270,7 @@ export default function MapView({ zoom = 13 }: Props) {
   return (
     <div className="map-root" style={{ display: 'flex', flex: 1, flexDirection: 'column', position: 'relative' }}>
       {/* search overlay */}
-      <div className="map-search" style={{ position: 'absolute', top: 10, right: 10, zIndex: 1100, width: '320px', maxWidth: 'calc(100% - 24px)' }}>
+      <div className="map-search" style={{ position: 'absolute', top: 10, right: 10, zIndex: 900, width: '320px', maxWidth: 'calc(100% - 24px)' }}>
         <input
           className="input"
           placeholder="Search places"
@@ -298,12 +291,24 @@ export default function MapView({ zoom = 13 }: Props) {
       </div>
 
       <div ref={mapEl} className="map-container" style={{ flex: 1, minHeight: 300 }} />
-      <div style={{ padding: '0.5rem' }}>
-        <div style={{ marginBottom: 8, color: '#374151', fontSize: 14 }}>{status}</div>
-        <button className="btn" onClick={recenter} type="button">
-          Recenter
-        </button>
-      </div>
+
+      {/* Recenter floating button inside map area */}
+      <button
+        aria-label="Recenter map"
+        title="Recenter map"
+        className="recenter-btn"
+        onClick={recenter}
+        type="button"
+      >
+        {/* simple crosshair SVG */}
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+          <circle cx="12" cy="12" r="7" stroke="#0B61FF" strokeWidth="1.6" />
+          <path d="M12 3v3" stroke="#0B61FF" strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M12 21v-3" stroke="#0B61FF" strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M3 12h3" stroke="#0B61FF" strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M21 12h-3" stroke="#0B61FF" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      </button>
     </div>
   )
 }

@@ -1,0 +1,17 @@
+2026-04-28 17:42:58.159 [main] INFO  io.ktor.server.Application - Autoreload is disabled because the development mode is off.
+2026-04-28 17:42:58.249 [main] INFO  io.ktor.server.Application - Application started in 0.257 seconds.
+2026-04-28 17:42:58.533 [DefaultDispatcher-worker-1] INFO  io.ktor.server.Application - Responding at http://127.0.0.1:8080
+2026-04-28 17:48:07.477 [eventLoopGroupProxy-4-1] TRACE io.ktor.server.routing.Routing - Trace for [api, login]
+/, segment:0 -> SUCCESS @ /
+  / [<slash>], segment:0 -> SUCCESS @ / [<slash>]
+    / [<slash>, (method:GET)], segment:0 -> FAILURE "Selector didn't match" @ / [<slash>, (method:GET)]
+  /api, segment:1 -> SUCCESS @ /api
+    /api/login, segment:2 -> SUCCESS @ /api/login
+      /api/login [(method:POST)], segment:2 -> SUCCESS @ /api/login [(method:POST)]
+    /api/users, segment:1 -> FAILURE "Selector didn't match" @ /api/users
+    /api/profile, segment:1 -> FAILURE "Selector didn't match" @ /api/profile
+Matched routes:
+  "" -> "api" -> "login" -> "(method:POST)"
+Routing resolve result:
+  SUCCESS @ /api/login [(method:POST)]
+2026-04-28 17:48:07.493 [eventLoopGroupProxy-4-1] TRACE i.k.server.engine.DefaultTransform - No Default Transformations found for class io.ktor.utils.io.ByteChannel and expected type TypeInfo(com.example.demo1.LoginRequest) for call /api/login
