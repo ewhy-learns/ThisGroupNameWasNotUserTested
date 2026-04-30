@@ -81,7 +81,22 @@ export function getProfile(id: string): Profile | null {
   try {
     const raw = localStorage.getItem(PROFILE_KEY + '_' + id)
     if (!raw) return null
-    return JSON.parse(raw) as Profile
+    const prof = JSON.parse(raw) as Profile
+    // Sanitize publicly visible fields when the viewer is not the profile owner.
+    // This prevents accidentally showing emails or phone numbers that may be embedded
+    // in the `about` text stored in localStorage (legacy seed data or older profiles).
+    try {
+      const viewer = getLoggedInUser()
+      if (viewer !== id && prof && typeof prof.about === 'string') {
+        // remove email addresses
+        prof.about = prof.about.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/ig, '[redacted]')
+        // remove common phone number patterns (digits with spaces/dashes, length >=7)
+        prof.about = prof.about.replace(/(\+?\d[\d\-\s]{6,}\d)/g, '[redacted]')
+      }
+    } catch (e) {
+      // ignore sanitization errors and return profile as-is
+    }
+    return prof
   } catch {
     return null
   }
