@@ -1,15 +1,33 @@
 import React, { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
-
+import { getProfile } from './AuthService'
+// Leaflet CSS is required for markers, popups and controls to render correctly
+import 'leaflet/dist/leaflet.css'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
 import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+// ...existing code...
 
 // Ensure default marker icons work with Vite bundling
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
   iconUrl: markerIcon,
   shadowUrl: markerShadow,
+})
+
+// Explicit default marker icon to ensure markers render correctly even when
+// bundlers/CSS cause the automatic default to be missing. Use the same images
+// provided by the leaflet package but create an explicit L.Icon instance and
+// pass it to markers below.
+const explicitDefaultIcon = L.icon({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  tooltipAnchor: [16, -28],
+  shadowSize: [41, 41],
 })
 
 type Props = {
@@ -62,10 +80,148 @@ export default function MapView({ zoom = 13 }: Props) {
       }
     }, 200)
 
-    // cleanup any outstanding search timer on mount/unmount
-    return () => {
-      if (searchTimeout.current) window.clearTimeout(searchTimeout.current)
+    // Load any events from localStorage and add markers if they include locationCoords
+    // Start with a plain layerGroup; if the markercluster plugin is available we'll switch to it.
+    let clusterGroup: any = L.layerGroup()
+    // prefer map.addLayer for compatibility
+    try { map.addLayer(clusterGroup) } catch (e) { try { clusterGroup.addTo && clusterGroup.addTo(map) } catch (e2) {} }
+
+    // Keep a plain LayerGroup for markers (no clustering) — simpler and more robust for the prototype.
+    // If you later want clustering, re-enable the markercluster plugin and adapt this logic.
+
+    const createPopupHtml = (e: any) => {
+      const title = e.title || e.activity || 'Event'
+      const loc = e.location || ''
+      const dt = (e.date ? `${e.date}` : '') + (e.startTime ? ` ${e.startTime}` : '')
+      // Prefer explicit organiser display name. Do NOT publicize email/phone on the event popup.
+      let host = e.organiserName || ''
+      // If organiserName missing, try to resolve displayName from the host id (email) stored in event.host
+      if (!host && e.host && typeof e.host === 'string') {
+        try {
+          const prof = getProfile(e.host)
+          if (prof && (prof as any).displayName) host = (prof as any).displayName
+        } catch (err) {
+          // ignore
+        }
+      }
+      // If still missing and host doesn't look like an email, use it as a fallback plain string
+      const fallbackHost = (!host && e.host && typeof e.host === 'string' && !e.host.includes('@')) ? e.host : ''
+      const parts = []
+      parts.push(`<div style="font-weight:700;margin-bottom:6px">${escapeHtml(title)}</div>`)
+      parts.push(`<div style="font-size:13px;color:#374151">${escapeHtml(loc)}</div>`)
+      if (dt) parts.push(`<div style="font-size:12px;color:#6b7280;margin-top:6px">${escapeHtml(dt)}</div>`)
+      if (e.suggestedExperience) parts.push(`<div style="font-size:12px;color:#6b7280">Experience: ${escapeHtml(e.suggestedExperience)}</div>`)
+      if (e.cost) parts.push(`<div style="font-size:12px;color:#6b7280">Cost: ${escapeHtml(e.cost)}</div>`)
+      if (e.vibes && Array.isArray(e.vibes) && e.vibes.length) parts.push(`<div style="margin-top:6px">Vibes: ${escapeHtml(e.vibes.join(', '))}</div>`)
+      const hostToShow = host || fallbackHost
+      if (hostToShow) parts.push(`<div style="margin-top:8px;font-size:13px">Organiser: ${escapeHtml(hostToShow)}</div>`)
+      if (e.description) parts.push(`<div style="margin-top:8px;font-size:13px;color:#374151">${escapeHtml(e.description)}</div>`)
+      // action link placeholder
+      parts.push(`<div style="margin-top:8px"><a href=\"#\" data-event-id=\"${escapeHtml(e.id)}\" class=\"map-join-link\">View / Join</a></div>`)
+      return parts.join('\n')
     }
+
+    function escapeHtml(s: any) {
+      if (s === undefined || s === null) return ''
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+    }
+
+    const markers: L.Marker[] = []
+    const loadEventMarkers = () => {
+      // clear previous markers
+      try { clusterGroup.clearLayers() } catch (e) { /* ignore */ }
+      try {
+        const raw = localStorage.getItem('demo1_events_v1')
+        if (!raw) return
+        const evts = JSON.parse(raw)
+        if (!Array.isArray(evts)) return
+        for (const e of evts) {
+          const lc = e.locationCoords
+          if (lc && typeof lc.lat === 'number' && typeof lc.lon === 'number') {
+            try {
+              // Some bundlers / CSS issues can leave the default marker icon invisible.
+              // If the default icon URL is not available, fall back to a visible circle marker.
+              const defaultIconUrl = (L.Icon.Default.prototype as any).options && (L.Icon.Default.prototype as any).options.iconUrl
+              let m: L.Layer
+              if (!defaultIconUrl) {
+                m = L.circleMarker([lc.lat, lc.lon], { radius: 6, color: '#0B61FF', fillColor: '#0B61FF', fillOpacity: 0.9 })
+                // circleMarker doesn't have bindPopup typed the same, but it does support it at runtime
+                ;(m as any).bindPopup && (m as any).bindPopup(createPopupHtml(e))
+                if ((clusterGroup as any).addLayer) { (clusterGroup as any).addLayer(m as any) } else { (m as any).addTo(map) }
+                ;(m as any).__demoEventId = e.id
+                markers.push(m as any)
+                } else {
+                 // create marker using the explicit icon so it is visible
+                 const marker = L.marker([lc.lat, lc.lon], { icon: explicitDefaultIcon })
+                const popup = createPopupHtml(e)
+                marker.bindPopup(popup)
+                if ((clusterGroup as any).addLayer) { (clusterGroup as any).addLayer(marker) } else { marker.addTo(map) }
+                ;(marker as any).__demoEventId = e.id
+                markers.push(marker)
+              }
+            } catch (err) {
+              // ignore marker creation errors
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[MapView] failed to load mock event markers', err)
+      }
+    }
+
+    // initial load
+    loadEventMarkers()
+
+    // react to other tabs updating events in localStorage
+    const onStorage = (ev: StorageEvent) => {
+      if (ev.key === 'demo1_events_v1') {
+        loadEventMarkers()
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    // react to same-window publishes when events are saved via the prototype API
+    const onEventsUpdated = (evt: any) => {
+      // reload markers first
+      loadEventMarkers()
+      try {
+        const item = evt && evt.detail
+        if (item && item.locationCoords && typeof item.locationCoords.lat === 'number' && typeof item.locationCoords.lon === 'number') {
+          const lat = item.locationCoords.lat
+          const lon = item.locationCoords.lon
+          const map = mapRef.current
+          if (map) {
+            try { map.flyTo([lat, lon], 15, { animate: true }) } catch { try { map.setView([lat, lon], 15) } catch {} }
+          }
+          // try open popup for the created event if marker added
+          const found = markers.find((m: any) => m && m.__demoEventId === item.id)
+          if (found && (found as any).openPopup) {
+            ;(found as any).openPopup()
+          }
+        }
+      } catch (e) {
+        // ignore focus errors
+      }
+    }
+    window.addEventListener('demo1_events_updated', onEventsUpdated as EventListener)
+    // delegate clicks from popup "View / Join" links to open the session view dialog
+    const onDocClick = (ev: MouseEvent) => {
+      try {
+        const target = ev.target as HTMLElement | null
+        if (!target) return
+        const anchor = target.closest && (target.closest('.map-join-link') as HTMLElement | null)
+        if (!anchor) return
+        ev.preventDefault()
+        const id = anchor.getAttribute('data-event-id')
+        if (!id) return
+        try {
+          const ce = new CustomEvent('demo1_open_event', { detail: { id } })
+          window.dispatchEvent(ce)
+        } catch (e) { /* ignore */ }
+      } catch (e) { /* ignore */ }
+    }
+    document.addEventListener('click', onDocClick)
+
+    // cleanup any outstanding search timer will be handled in the final cleanup below
 
     // Simplified geolocation: single fetch on page load, and recenter on demand.
     const locateOnce = (options?: PositionOptions) => {
@@ -75,7 +231,8 @@ export default function MapView({ zoom = 13 }: Props) {
         setStatus('Geolocation not available — defaulting to UNE')
         // center on UNE when geolocation is unavailable; do NOT create a marker
         try {
-          map.setView(UNE_COORD, 12)
+          const m = mapRef.current
+          if (m) m.setView(UNE_COORD, 12)
         } catch (e) {
           console.warn('[MapView] setting default UNE failed', e)
         }
@@ -91,24 +248,28 @@ export default function MapView({ zoom = 13 }: Props) {
             const lon = pos.coords.longitude
 
             try {
-              map.flyTo([lat, lon], 14, { animate: true })
+              const m = mapRef.current
+              if (m) m.flyTo([lat, lon], 14, { animate: true })
             } catch (e) {
               console.warn('[MapView] flyTo failed', e)
-              map.setView([lat, lon], 14)
+              const m2 = mapRef.current
+              if (m2) try { m2.setView([lat, lon], 14) } catch (e2) {}
             }
 
-            setTimeout(() => map.invalidateSize(), 300)
+            setTimeout(() => { const m3 = mapRef.current; if (m3) m3.invalidateSize() }, 300)
 
             // Show a small solid blue dot plus a subtle pulsing halo
             if (userMarkerRef.current) {
-              userMarkerRef.current.setLatLng([lat, lon])
+              try { userMarkerRef.current.setLatLng([lat, lon]) } catch (e) { /* ignore */ }
             } else {
-              userMarkerRef.current = L.circleMarker([lat, lon], { radius: 4, color: '#0B61FF', fillColor: '#0B61FF', fillOpacity: 1, weight: 0, className: 'user-dot' }).addTo(map)
+              const m4 = mapRef.current
+              if (m4) userMarkerRef.current = L.circleMarker([lat, lon], { radius: 4, color: '#0B61FF', fillColor: '#0B61FF', fillOpacity: 1, weight: 0, className: 'user-dot' }).addTo(m4)
             }
             if (userPulseRef.current) {
-              userPulseRef.current.setLatLng([lat, lon])
+              try { userPulseRef.current.setLatLng([lat, lon]) } catch (e) { /* ignore */ }
             } else {
-              userPulseRef.current = L.circleMarker([lat, lon], { radius: 14, color: '#0B61FF', fillColor: '#0B61FF', fillOpacity: 0.12, weight: 0, className: 'user-dot-pulse' }).addTo(map)
+              const m5 = mapRef.current
+              if (m5) userPulseRef.current = L.circleMarker([lat, lon], { radius: 14, color: '#0B61FF', fillColor: '#0B61FF', fillOpacity: 0.12, weight: 0, className: 'user-dot-pulse' }).addTo(m5)
             }
           },
           (err) => {
@@ -116,7 +277,8 @@ export default function MapView({ zoom = 13 }: Props) {
             setStatus('Location unavailable — defaulting to UNE')
             // center on UNE as fallback; do NOT create a marker
             try {
-              map.setView(UNE_COORD, 12)
+              const m6 = mapRef.current
+              if (m6) m6.setView(UNE_COORD, 12)
             } catch (e) {
               console.warn('[MapView] setting default UNE failed', e)
             }
@@ -156,7 +318,11 @@ export default function MapView({ zoom = 13 }: Props) {
 
     // cleanup on unmount
     return () => {
-      // clean up markers
+      try { if (searchTimeout.current) window.clearTimeout(searchTimeout.current) } catch (e) {}
+       try { window.removeEventListener('storage', onStorage) } catch (e) {}
+       try { window.removeEventListener('demo1_events_updated', onEventsUpdated) } catch (e) {}
+       try { clusterGroup.clearLayers && clusterGroup.clearLayers() } catch (e) {}
+       try { for (const m of markers) m.remove() } catch (e) {}
       if (userMarkerRef.current) {
         userMarkerRef.current.remove()
         userMarkerRef.current = null
@@ -169,7 +335,8 @@ export default function MapView({ zoom = 13 }: Props) {
         searchMarkerRef.current.remove()
         searchMarkerRef.current = null
       }
-      map.remove()
+      try { document.removeEventListener('click', onDocClick) } catch (e) {}
+      try { map.remove() } catch (e) {}
       mapRef.current = null
     }
   }, [zoom])
@@ -212,7 +379,8 @@ export default function MapView({ zoom = 13 }: Props) {
     if (searchMarkerRef.current) {
       searchMarkerRef.current.setLatLng([lat, lon]).bindPopup(r.display_name).openPopup()
     } else {
-      searchMarkerRef.current = L.marker([lat, lon]).addTo(map).bindPopup(r.display_name).openPopup()
+      // ensure the search marker also uses the explicit icon
+      searchMarkerRef.current = L.marker([lat, lon], { icon: explicitDefaultIcon }).addTo(map).bindPopup(r.display_name).openPopup()
     }
     setShowResults(false)
     setSearchResults([])

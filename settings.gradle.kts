@@ -29,5 +29,6 @@ dependencyResolutionManagement {
 }
 
 include(":composeApp")
-include(":server")
+// server module removed for client-only prototype
+// include(":server")
 include(":shared")

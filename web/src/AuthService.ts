@@ -60,6 +60,13 @@ const EVENTS_KEY = 'demo1_events_v1'
 export type Profile = {
   id: string
   tags: string[]
+  // optional display name (public)
+  displayName?: string
+  // contact details (not publicized on events)
+  email?: string
+  phone?: string
+  // optional password (prototype only - stored locally)
+  password?: string
   about?: string
   aboutPublic?: boolean
   gender?: string
@@ -195,12 +202,76 @@ export function saveEvent(event: EventDraft) {
     const raw = localStorage.getItem(EVENTS_KEY)
     const arr: EventItem[] = raw ? JSON.parse(raw) : []
     const id = event.id ?? 'evt_' + Math.random().toString(36).slice(2,9)
-    const item: EventItem = { ...(event as any), id, createdAt: Date.now() }
-    arr.push(item)
+    // Normalize host and participants to predictable string forms to avoid casing issues
+    const normalizedEvent: any = { ...(event as any) }
+    try {
+      normalizedEvent.host = normalizedEvent.host ? String(normalizedEvent.host).trim() : ''
+      if (Array.isArray(normalizedEvent.participants)) {
+        normalizedEvent.participants = normalizedEvent.participants.map((p: any) => String(p).trim())
+      }
+    } catch (e) { /* ignore normalization errors */ }
+    const item: EventItem = { ...normalizedEvent, id, createdAt: Date.now() }
+    // normalize locationCoords lat/lon to numbers if present
+    if ((item as any).locationCoords) {
+      try {
+        const lc = (item as any).locationCoords
+        if (lc.lat !== undefined) lc.lat = Number(lc.lat)
+        if (lc.lon !== undefined) lc.lon = Number(lc.lon)
+      } catch (e) { /* ignore */ }
+    }
+    // if an event with same id exists, replace it; otherwise push
+    const idx = arr.findIndex(a => a.id === id)
+    if (idx >= 0) arr[idx] = item
+    else arr.push(item)
     localStorage.setItem(EVENTS_KEY, JSON.stringify(arr))
+    // Notify same-window listeners that events were updated (window 'storage' only fires for other tabs)
+    try {
+      if (typeof window !== 'undefined' && window.dispatchEvent) {
+        // include the saved item as detail so listeners (e.g. MapView) can optionally focus it
+        const ce = new CustomEvent('demo1_events_updated', { detail: item })
+        window.dispatchEvent(ce)
+      }
+    } catch (e) {
+      // ignore
+    }
     return item
   } catch (e) {
     console.warn('[AuthService] saveEvent failed', e)
+    return null
+  }
+}
+
+export function addParticipant(eventId: string, participantId: string) {
+  try {
+    const raw = localStorage.getItem(EVENTS_KEY)
+    const arr: EventItem[] = raw ? JSON.parse(raw) : []
+    const idx = arr.findIndex(e => e.id === eventId)
+    if (idx === -1) return null
+    const ev = arr[idx]
+    ev.participants = Array.isArray(ev.participants) ? ev.participants.map((p:any)=>String(p)) : []
+    if (!ev.participants.includes(participantId)) ev.participants.push(participantId)
+    arr[idx] = ev
+    localStorage.setItem(EVENTS_KEY, JSON.stringify(arr))
+    try { if (typeof window !== 'undefined' && window.dispatchEvent) window.dispatchEvent(new CustomEvent('demo1_events_updated', { detail: ev })) } catch (e) {}
+    return ev
+  } catch (e) {
+    return null
+  }
+}
+
+export function removeParticipant(eventId: string, participantId: string) {
+  try {
+    const raw = localStorage.getItem(EVENTS_KEY)
+    const arr: EventItem[] = raw ? JSON.parse(raw) : []
+    const idx = arr.findIndex(e => e.id === eventId)
+    if (idx === -1) return null
+    const ev = arr[idx]
+    ev.participants = Array.isArray(ev.participants) ? ev.participants.filter((p:any) => String(p) !== participantId) : []
+    arr[idx] = ev
+    localStorage.setItem(EVENTS_KEY, JSON.stringify(arr))
+    try { if (typeof window !== 'undefined' && window.dispatchEvent) window.dispatchEvent(new CustomEvent('demo1_events_updated', { detail: ev })) } catch (e) {}
+    return ev
+  } catch (e) {
     return null
   }
 }
@@ -211,4 +282,28 @@ export function listEvents(): EventItem[] {
     return raw ? JSON.parse(raw) : []
   } catch { return [] }
 }
+
+
+// Seed a local prototype account/profile so the app can run without a backend.
+// Uses the same default email used in the UI as a sensible seed value.
+try {
+  const seedId = 'username@une.edu.au'
+  if (!accountExists(seedId)) {
+    registerAccount(seedId)
+  }
+  if (!getProfile(seedId)) {
+    saveProfile({
+      id: seedId,
+      tags: ['outdoor', 'community'],
+      about: 'Prototype organiser account (local only).',
+      aboutPublic: true,
+      completedAt: Date.now(),
+      skillChecks: {},
+      vibes: ['friendly']
+    })
+  }
+} catch (e) {
+  // ignore errors during eager seeding
+}
+
 
