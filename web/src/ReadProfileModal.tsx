@@ -1,6 +1,5 @@
 import React from 'react'
 import { getProfile, getLoggedInUser, listEvents } from './AuthService'
-import Switch from './Switch'
 
 type Props = {
   open: boolean
@@ -19,7 +18,7 @@ export default function ReadProfileModal({ open, onClose, userId, onEditInterest
   if (!open) return null
   const profile = getProfile(userId)
   const viewer = getLoggedInUser()
-  const [showParticipantStats, setShowParticipantStats] = React.useState<boolean>(true)
+  // no toggle: always show both participant and organiser stats separated by a divider
 
   const safeDisplay = (id: string | undefined, prof: any) => {
     if (prof && prof.displayName) return prof.displayName
@@ -79,48 +78,40 @@ export default function ReadProfileModal({ open, onClose, userId, onEditInterest
                 {profile.vibes && profile.vibes.length ? profile.vibes.map(v => <div key={v} className="chip">{v}</div>) : <div style={{ color: '#9ca3af' }}>No vibes</div>}
               </div>
 
-              {/* Participant / Organiser stats: toggle to switch between views */}
-              <div style={{ marginTop: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Switch checked={showParticipantStats} onChange={v => setShowParticipantStats(v)} ariaLabel="Toggle participant / organiser stats" />
-                  <span style={{ fontSize: 13 }}>{showParticipantStats ? 'Show participant stats' : 'Show organiser stats'}</span>
+              {/* Participant and Organiser stats shown together with a divider */}
+              <div style={{ marginTop: 12, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>Participant Stats</div>
+                  <div style={{ marginTop: 6, fontSize: 13, color: '#6b7280' }}>
+                    {(() => {
+                      try {
+                        const all = listEvents()
+                        const pid = profile.id || userId
+                        const joined = all.filter(e => Array.isArray(e.participants) && e.participants.map((p:any)=>String(p)).includes(String(pid)))
+                        const joinedCount = joined.length
+                        const hosts = new Set(joined.map(j => j.host))
+                        return (<div>Events Joined: <strong>{joinedCount}</strong><br/>Hosts engaged: <strong>{hosts.size}</strong></div>)
+                      } catch (e) { return null }
+                    })()}
+                  </div>
                 </div>
 
-                <div style={{ borderLeft: '1px solid #eef2ff', paddingLeft: 12 }}>
-                  {showParticipantStats ? (
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700 }}>Participant Stats</div>
-                      <div style={{ marginTop: 6, fontSize: 13, color: '#6b7280' }}>
-                        {(() => {
-                          try {
-                            const all = listEvents()
-                            const pid = profile.id || userId
-                            const joined = all.filter(e => Array.isArray(e.participants) && e.participants.map((p:any)=>String(p)).includes(String(pid)))
-                            const joinedCount = joined.length
-                            // number of unique hosts this user has joined
-                            const hosts = new Set(joined.map(j => j.host))
-                            return (<div>Events Joined: <strong>{joinedCount}</strong><br/>Hosts engaged: <strong>{hosts.size}</strong></div>)
-                          } catch (e) { return null }
-                        })()}
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700 }}>Organiser Stats</div>
-                      <div style={{ marginTop: 6, fontSize: 13, color: '#6b7280' }}>
-                        {(() => {
-                          try {
-                            const all = listEvents()
-                            const hosted = all.filter(e => e.host === (profile.id || userId))
-                            const hostedCount = hosted.length
-                            const successCount = hosted.filter(h => Array.isArray(h.participants) && h.participants.length > 0).length
-                            const successRate = hostedCount ? Math.round((successCount / hostedCount) * 100) : 0
-                            return (<div>Events Hosted: <strong>{hostedCount}</strong><br/>Event success rate: <strong>{successRate}%</strong></div>)
-                          } catch (e) { return null }
-                        })()}
-                      </div>
-                    </div>
-                  )}
+                <div style={{ width: 1, background: '#eef2ff' }} />
+
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>Organiser Stats</div>
+                  <div style={{ marginTop: 6, fontSize: 13, color: '#6b7280' }}>
+                    {(() => {
+                      try {
+                        const all = listEvents()
+                        const hosted = all.filter(e => e.host === (profile.id || userId))
+                        const hostedCount = hosted.length
+                        const successCount = hosted.filter(h => Array.isArray(h.participants) && h.participants.length > 0).length
+                        const successRate = hostedCount ? Math.round((successCount / hostedCount) * 100) : 0
+                        return (<div>Events Hosted: <strong>{hostedCount}</strong><br/>Event success rate: <strong>{successRate}%</strong></div>)
+                      } catch (e) { return null }
+                    })()}
+                  </div>
                 </div>
               </div>
 
