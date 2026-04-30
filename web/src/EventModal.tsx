@@ -136,7 +136,11 @@ export default function EventModal({ open, onClose, userId }: Props) {
       setValidationMessage('Please complete the highlighted fields before publishing.')
       return
     }
-    const evt = saveEvent(draft)
+    // ensure we record the host for created events
+    // Do not set organiserName to a raw email address. Prefer displayName, otherwise leave undefined so UIs don't expose emails.
+    const organiserName = getProfile(userId)?.displayName || (userId && typeof userId === 'string' && !userId.includes('@') ? userId : undefined)
+    const toSave = { ...draft, host: userId, organiserName }
+    const evt = saveEvent(toSave)
     if (evt) {
       clearEventDraft()
       // show simple confirmation
@@ -148,7 +152,37 @@ export default function EventModal({ open, onClose, userId }: Props) {
   }
 
   const profile = getProfile(userId)
-  const suggestedVibes = profile?.vibes ?? VIBES
+
+  // recent vibes ordering stored locally so users see recently-used vibes first
+  const RECENT_VIBES_KEY = 'demo1_vibes_recent_v1'
+  function getRecentVibes(): string[] {
+    try {
+      const raw = localStorage.getItem(RECENT_VIBES_KEY)
+      if (!raw) return []
+      return JSON.parse(raw)
+    } catch { return [] }
+  }
+  function saveRecentVibe(v: string) {
+    try {
+      const raw = localStorage.getItem(RECENT_VIBES_KEY)
+      const arr: string[] = raw ? JSON.parse(raw) : []
+      const vStr = String(v)
+      // remove existing and add to front
+      const next = [vStr, ...arr.filter(x => x !== vStr)].slice(0, 20)
+      localStorage.setItem(RECENT_VIBES_KEY, JSON.stringify(next))
+    } catch (e) { /* ignore */ }
+  }
+
+  // build vibe list: recent (user), then profile vibes, then defaults
+  const suggestedVibes = (() => {
+    const recent = getRecentVibes()
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const v of recent) { if (!seen.has(v)) { out.push(v); seen.add(v) } }
+    for (const v of (profile?.vibes ?? [])) { if (!seen.has(v)) { out.push(v); seen.add(v) } }
+    for (const v of VIBES) { if (!seen.has(v)) { out.push(v); seen.add(v) } }
+    return out
+  })()
 
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true">
@@ -373,8 +407,12 @@ export default function EventModal({ open, onClose, userId }: Props) {
                 {suggestedVibes.map((v: string) => (
                   <button key={v} className={((draft.vibes||[]).includes(v) ? 'btn' : 'btn ghost')} onClick={() => {
                     const cur = draft.vibes || []
-                    const next = cur.includes(v) ? cur.filter((x:any)=>x!==v) : [...cur, v]
+                    const selecting = !cur.includes(v)
+                    const next = selecting ? [...cur, v] : cur.filter((x:any)=>x!==v)
                     setField('vibes', next)
+                    if (selecting) {
+                      try { saveRecentVibe(v) } catch (e) { /* ignore */ }
+                    }
                   }}>{v}</button>
                 ))}
               </div>

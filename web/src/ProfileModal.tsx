@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react'
+import Switch from './Switch'
 import { getSuggestedTags, saveProfile, suggestTag, getProfile } from './AuthService'
 
 type Props = {
@@ -9,6 +10,7 @@ type Props = {
 
 type EditorProps = Props & {
   initialStep?: number
+  requiredFlow?: boolean
 }
 
 const DEFAULT_TAGS = [
@@ -99,12 +101,21 @@ function sample<T>(arr: T[], k: number) {
 }
 
 export default function ProfileModal({ open, onClose, userId, initialStep }: EditorProps) {
+  const requiredFlow = (arguments[0] as any)?.requiredFlow ?? false
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string[]>([])
   const [step, setStep] = useState<number>(1)
   const [about, setAbout] = useState('')
   const [aboutPublic, setAboutPublic] = useState<boolean>(true)
   const [gender, setGender] = useState<string>('Prefer not to say')
+  // contact details (editable in profile but not publicized on events)
+  const [displayName, setDisplayName] = useState<string>('')
+  const [contactEmail, setContactEmail] = useState<string>('')
+  const [contactPhone, setContactPhone] = useState<string>('')
+  // password change fields
+  const [currentPassword, setCurrentPassword] = useState<string>('')
+  const [newPassword, setNewPassword] = useState<string>('')
+  const [confirmPassword, setConfirmPassword] = useState<string>('')
   const [toast, setToast] = useState<string | null>(null)
   const suggested = useMemo(() => getSuggestedTags(), [])
   const singleMode = typeof initialStep === 'number'
@@ -138,7 +149,7 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
   React.useEffect(() => {
     if (!open) return
     // if caller requested a particular step (e.g. edit about/gender/interests), set it
-    if (initialStep && initialStep >= 1 && initialStep <= 4) {
+    if (initialStep && initialStep >= 1 && initialStep <= 6) {
       setStep(initialStep)
     } else {
       setStep(1)
@@ -150,6 +161,9 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
         setAbout(profile.about ?? '')
         setAboutPublic(profile.aboutPublic === undefined ? true : !!profile.aboutPublic)
         setGender(profile.gender ?? 'Prefer not to say')
+        setDisplayName(profile.displayName ?? '')
+        setContactEmail(profile.email ?? '')
+        setContactPhone(profile.phone ?? '')
         // refresh displayed tags to exclude already-selected, and ensure 10 items
         setDisplayedTags(() => fillDisplayedTags([], new Set(profile.tags ?? []), filterMode))
         // load vibes if present
@@ -159,14 +173,19 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
           const pool = VIBES_TAGS.filter(t => !sel.has(t))
           return sample(pool, 10)
         })
-      } else {
+        } else {
         // new open: reshuffle displayed tags and ensure 10 items
         setDisplayedTags(() => fillDisplayedTags([], new Set(), filterMode))
         setDisplayedVibes(() => sample(VIBES_TAGS, 10))
         setSelected([])
         setAbout('')
         setAboutPublic(true)
-        setGender('Prefer not to say')
+          setGender('Prefer not to say')
+          setDisplayName('')
+          setContactEmail('')
+          setContactPhone('')
+          // if this is a required onboarding flow, start at step 1 and prevent skipping
+          if (requiredFlow) setStep(1)
       }
     } catch (e) {
       console.warn('[ProfileModal] failed to load profile', e)
@@ -241,6 +260,29 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
     setDisplayedTags(() => fillDisplayedTags([], new Set(selected), filterMode))
   }
 
+  const isProfileCompleted = () => {
+    const p = getProfile(userId)
+    return !!(p && p.completedAt)
+  }
+
+  // Validation for each step. About may be empty and 'Prefer not to say' is allowed for gender.
+  const isStepValid = (s: number) => {
+    if (s === 1) return selected.length > 0
+    if (s === 2) return selectedVibes.length > 0
+    // About page may be empty according to requirements
+    if (s === 3) return true
+    // Allow "Prefer not to say" as a valid choice for gender
+    if (s === 4) return true
+    // Contact details page: always valid (fields optional)
+    if (s === 5) return true
+    // Change password page: require matching new passwords if provided
+    if (s === 6) {
+      if (!newPassword && !confirmPassword) return true
+      return newPassword.length > 0 && newPassword === confirmPassword
+    }
+    return true
+  }
+
   const toggleVibe = (tag: string) => {
     setSelectedVibes(prev => {
       const selecting = !prev.includes(tag)
@@ -269,11 +311,56 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
 
   const handleSave = () => {
     // save profile (simple) including vibes
-    saveProfile({ id: userId, tags: selected, vibes: selectedVibes, about, aboutPublic, gender, completedAt: Date.now() })
+    const profile = { id: userId, tags: selected, vibes: selectedVibes, about, aboutPublic, gender, completedAt: Date.now(), displayName: displayName || undefined, email: contactEmail || undefined, phone: contactPhone || undefined }
+    saveProfile(profile)
     setToast('Profile saved')
     setTimeout(() => setToast(null), 1800)
     // close after short delay to show toast
     setTimeout(() => onClose(), 900)
+  }
+
+  const handleChangePassword = () => {
+    try {
+      const profile = getProfile(userId) || { id: userId, tags: [], completedAt: Date.now() }
+      // If profile has a password, require currentPassword to match
+      if ((profile as any).password) {
+        if (currentPassword !== (profile as any).password) {
+          setToast('Current password is incorrect')
+          setTimeout(() => setToast(null), 2000)
+          return
+        }
+      }
+      if (!newPassword) {
+        setToast('Enter a new password')
+        setTimeout(() => setToast(null), 1400)
+        return
+      }
+      if (newPassword !== confirmPassword) {
+        setToast('New passwords do not match')
+        setTimeout(() => setToast(null), 1600)
+        return
+      }
+      ;(profile as any).password = newPassword
+      saveProfile(profile)
+      setToast('Password changed')
+      setTimeout(() => setToast(null), 1600)
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch (e) {
+      console.warn('[ProfileModal] change password failed', e)
+      setToast('Change password failed')
+      setTimeout(() => setToast(null), 1400)
+    }
+  }
+
+  const handleClose = () => {
+    if (requiredFlow && !isProfileCompleted()) {
+      setToast('Please complete your profile before continuing')
+      setTimeout(() => setToast(null), 2000)
+      return
+    }
+    onClose()
   }
 
   // keyboard: close on Escape
@@ -293,7 +380,7 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
       <div className="modal">
         <div className="modal-header">
           <h3>Profile setup</h3>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">✕</button>
+          <button type="button" className="modal-close" onClick={handleClose} aria-label="Close">✕</button>
         </div>
 
         <div className="modal-body">
@@ -304,10 +391,30 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
                 Add your favorite sports and hobbies to help the system recommend activities you might like in your area. You can always come back later and update this.
               </p>
 
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input className="input" placeholder="Search tags" value={query} onChange={e => setQuery(e.target.value)} />
-                <button type="button" className="btn ghost" onClick={refreshSuggestions}>Refresh</button>
-              </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    className="input"
+                    placeholder="Search tags"
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        const v = query.trim()
+                        if (!v) return
+                        // if query matches an existing tag (case-insensitive), select it
+                        const match = allTags.find(t => t.toLowerCase() === v.toLowerCase())
+                        if (match) {
+                          toggle(match)
+                        } else {
+                          // otherwise suggest new tag
+                          handleSuggest()
+                        }
+                      }
+                    }}
+                  />
+                  <button type="button" className="btn ghost" onClick={refreshSuggestions}>Refresh</button>
+                </div>
 
               {/* Filter controls: sports only / both / hide sports */}
               <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
@@ -353,90 +460,24 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                {singleMode ? (
-                  <>
-                    <button type="button" className="btn" onClick={handleSave}>Save</button>
-                    <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-                  </>
-                ) : (
-                  <>
-                    <button type="button" className="btn" onClick={() => setStep(2)} disabled={selected.length === 0}>Next</button>
-                    <button type="button" className="btn ghost" onClick={onClose}>Skip</button>
-                  </>
-                )}
-              </div>
+               <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                 {singleMode ? (
+                   <>
+                     <button type="button" className="btn" onClick={handleSave}>Save</button>
+                     <button type="button" className="btn ghost" onClick={handleClose}>Cancel</button>
+                   </>
+                 ) : (
+                   <>
+                     <button type="button" className="btn" onClick={() => setStep(2)} disabled={!isStepValid(1)}>Next</button>
+                     {!requiredFlow && <button type="button" className="btn ghost" onClick={onClose}>Skip</button>}
+                   </>
+                 )}
+               </div>
             </>
           ) : step === 2 ? (
-            // Step 2: About me
+            // Step 2: Vibes
             <>
-              <p style={{ marginTop: 0 }}>
-                Include anything in this section you might want others to know about you. This might be what brings you to the area, what your week might look like generally, activities that get you excited or what you might be wanting to find in participants or activities. This is optional but may help you build connection with other users.
-              </p>
-
-              <label className="input-label">About me (optional)</label>
-              <textarea className="input" style={{ minHeight: 120 }} value={about} onChange={e => setAbout(e.target.value)} />
-
-              <div style={{ marginTop: 8 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input type="checkbox" checked={aboutPublic} onChange={e => setAboutPublic(e.target.checked)} />
-                  <span>Make this about me public (visible to everyone). Otherwise it will be limited to friends.</span>
-                </label>
-              </div>
-
-
-                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                  {singleMode ? (
-                    <>
-                      <button type="button" className="btn" onClick={handleSave}>Save</button>
-                      <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-                    </>
-                  ) : (
-                    <>
-                      <button type="button" className="btn" onClick={() => setStep(3)}>Next</button>
-                      <button type="button" className="btn ghost" onClick={() => setStep(1)}>Back</button>
-                    </>
-                  )}
-                </div>
-            </>
-            ) : step === 3 ? (
-            // Step 3: Gender
-            <>
-              <p style={{ marginTop: 0 }}>
-                The following question is used to help users gauge participants in an activity. This information will not be displayed on your public profile.
-              </p>
-
-              <div style={{ marginTop: 12 }}>
-                        <div style={{ fontSize: 13, marginBottom: 6 }}>Gender (optional)</div>
-                        <div style={{ marginBottom: 8, fontSize: 12 }}>
-                          Note: The following question is used to help users gauge participants in an activity. This information will not be displayed on your public profile.
-                        </div>
-                        <select className="input" value={gender} onChange={e => setGender(e.target.value)}>
-                          <option>Male</option>
-                          <option>Female</option>
-                          <option>Non-Binary</option>
-                          <option>Prefer not to say</option>
-                        </select>
-              </div>
-
-                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                  {singleMode ? (
-                    <>
-                      <button type="button" className="btn" onClick={handleSave}>Save</button>
-                      <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-                    </>
-                  ) : (
-                    <>
-                      <button type="button" className="btn" onClick={() => setStep(4)}>Next</button>
-                      <button type="button" className="btn ghost" onClick={() => setStep(2)}>Back</button>
-                    </>
-                  )}
-                </div>
-              </>
-            ) : step === 4 ? (
-              // Step 4: Vibes
-              <>
-                <p style={{ marginTop: 0 }}>Select the vibes that describe your typical sessions or intent. Refresh to see different suggested vibes.</p>
+              <p style={{ marginTop: 0 }}>Select the vibes that describe your typical sessions or intent. Refresh to see different suggested vibes.</p>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <input className="input" placeholder="Filter vibes" value={''} onChange={() => {}} />
                   <button type="button" className="btn ghost" onClick={() => setDisplayedVibes(() => sample(VIBES_TAGS.filter(v => !selectedVibes.includes(v)), 10))}>Refresh</button>
@@ -461,17 +502,142 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
                   {singleMode ? (
                     <>
                       <button type="button" className="btn" onClick={handleSave}>Save</button>
-                      <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+                      <button type="button" className="btn ghost" onClick={handleClose}>Cancel</button>
                     </>
                   ) : (
                     <>
-                      <button type="button" className="btn" onClick={handleSave}>Save</button>
-                      <button type="button" className="btn ghost" onClick={() => setStep(3)}>Back</button>
+                      <button type="button" className="btn" onClick={() => setStep(3)} disabled={!isStepValid(2)}>Next</button>
+                      <button type="button" className="btn ghost" onClick={() => setStep(1)}>Back</button>
                     </>
                   )}
                 </div>
+            </>
+            ) : step === 3 ? (
+            // Step 3: About me
+            <>
+              <p style={{ marginTop: 0 }}>
+                Include anything in this section you might want others to know about you. This might be what brings you to the area, what your week might look like generally, activities that get you excited or what you might be wanting to find in participants or activities. This helps others connect with you.
+              </p>
+
+              <label className="input-label">About me</label>
+              <textarea className="input" style={{ minHeight: 120 }} value={about} onChange={e => setAbout(e.target.value)} />
+
+              <div style={{ marginTop: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Switch checked={aboutPublic} onChange={v => setAboutPublic(v)} />
+                  <span>Make this about me public (visible to everyone). Otherwise it will be limited to friends.</span>
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                {singleMode ? (
+                  <>
+                    <button type="button" className="btn" onClick={handleSave}>Save</button>
+                    <button type="button" className="btn ghost" onClick={handleClose}>Cancel</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" className="btn" onClick={() => setStep(4)} disabled={!isStepValid(3)}>Next</button>
+                    <button type="button" className="btn ghost" onClick={() => setStep(2)}>Back</button>
+                  </>
+                )}
+              </div>
               </>
-            ) : null}
+            ) : step === 4 ? (
+              // Step 4: Gender
+              <>
+                <p style={{ marginTop: 0 }}>
+                  The following question is used to help users gauge participants in an activity.
+                </p>
+
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 13, marginBottom: 6 }}>Gender (required)</div>
+                  <div style={{ marginBottom: 8, fontSize: 12 }}>
+                    Note: This information will not be displayed on your public profile unless you choose to.
+                  </div>
+                  <select className="input" value={gender} onChange={e => setGender(e.target.value)}>
+                    <option>Male</option>
+                    <option>Female</option>
+                    <option>Non-Binary</option>
+                    <option>Prefer not to say</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                  {singleMode ? (
+                    <>
+                      <button type="button" className="btn" onClick={handleSave}>Save</button>
+                      <button type="button" className="btn ghost" onClick={handleClose}>Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="btn" onClick={() => { if (isStepValid(4)) handleSave() }} disabled={!isStepValid(4)}>Save</button>
+                      <button type="button" className="btn ghost" onClick={() => setStep(3)}>Back</button>
+                    </>
+                  )}
+                  </div>
+                </>
+                ) : step === 5 ? (
+                  // Step 5: Contact details
+                  <>
+                    <p style={{ marginTop: 0 }}>Add a display name and contact details. Email and phone will not be publicized on event popups.</p>
+
+                    <label className="input-label">Display name</label>
+                    <input className="input" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="How you want to be shown (e.g. Alex)" />
+
+                    <label className="input-label" style={{ marginTop: 8 }}>Email (private)</label>
+                    <input className="input" value={contactEmail} onChange={e => setContactEmail(e.target.value)} placeholder="you@example.org" />
+
+                    <label className="input-label" style={{ marginTop: 8 }}>Phone (private)</label>
+                    <input className="input" value={contactPhone} onChange={e => setContactPhone(e.target.value)} placeholder="+61 4xx xxx xxx" />
+
+                    <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                      {singleMode ? (
+                        <>
+                          <button type="button" className="btn" onClick={handleSave}>Save</button>
+                          <button type="button" className="btn ghost" onClick={handleClose}>Cancel</button>
+                        </>
+                      ) : (
+                        <>
+                          <button type="button" className="btn" onClick={() => { if (isStepValid(5)) handleSave(); setStep(6) }} disabled={!isStepValid(5)}>Next</button>
+                          <button type="button" className="btn ghost" onClick={() => setStep(4)}>Back</button>
+                        </>
+                      )}
+                    </div>
+                  </>
+                ) : step === 6 ? (
+                  // Step 6: Change password
+                  <>
+                    <p style={{ marginTop: 0 }}>Change your local account password (prototype). Passwords are stored locally for this demo.</p>
+
+                    {(getProfile(userId) as any)?.password && (
+                      <>
+                        <label className="input-label">Current password</label>
+                        <input className="input" type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} />
+                      </>
+                    )}
+
+                    <label className="input-label" style={{ marginTop: 8 }}>New password</label>
+                    <input className="input" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+
+                    <label className="input-label" style={{ marginTop: 8 }}>Confirm new password</label>
+                    <input className="input" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} />
+
+                    <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                      {singleMode ? (
+                        <>
+                          <button type="button" className="btn" onClick={() => { handleChangePassword(); handleClose() }}>Save</button>
+                          <button type="button" className="btn ghost" onClick={handleClose}>Cancel</button>
+                        </>
+                      ) : (
+                        <>
+                          <button type="button" className="btn" onClick={() => { if (isStepValid(6)) handleChangePassword(); setStep(1) }} disabled={!isStepValid(6)}>Save</button>
+                          <button type="button" className="btn ghost" onClick={() => setStep(5)}>Back</button>
+                        </>
+                      )}
+                    </div>
+                  </>
+                ) : null}
         </div>
       </div>
     </div>

@@ -32,19 +32,34 @@ in your IDE’s toolbar or build it directly from the terminal:
   .\gradlew.bat :composeApp:assembleDebug
   ```
 
-### Build and Run Server
+### Client-only prototype (web)
 
-To build and run the development version of the server, use the run configuration from the run widget
-in your IDE’s toolbar or run it directly from the terminal:
+This workspace has been adapted to run a client-only prototype for the web frontend.
+The backend/server module is not required for this prototype and is excluded from the Gradle build.
 
-- on macOS/Linux
-  ```shell
-  ./gradlew :server:run
+To run the web frontend (Vite) from the `web` folder:
+
+- Install dependencies and start the dev server (Windows PowerShell):
+  ```powershell
+  cd web
+  npm install
+  npm run dev
   ```
-- on Windows
-  ```shell
-  .\gradlew.bat :server:run
-  ```
+
+The frontend will automatically seed mock accounts, profiles and events into localStorage on first run
+(these files are under `web/mock-data`). Open the app (usually at http://localhost:5173) and you should
+see the seeded events and organiser accounts available for the prototype.
+
+If you want to regenerate mock-data, use the provided generator script:
+
+```powershell
+cd web
+npm run gen-mock
+```
+
+Notes:
+- Authentication in the prototype is intentionally loose: any existing local account will log in without checking the password, and attempting to log in with a new identifier will create a local account automatically. This keeps the prototype simple and client-only.
+- If you later want to re-enable the server module, uncomment it in `settings.gradle.kts` and restore any server run configuration.
 
 ### Build and Run Web Application
 

@@ -40,14 +40,24 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
       setError('Enter email or phone')
       return
     }
+    // Prototype: allow very loose auth. If account exists, log in regardless of password.
     if (accountExists(normalized)) {
-      // prototype: password is not checked
       setLoggedInUser(normalized)
       onLoginSuccess(normalized)
       clear()
       onClose()
-    } else {
-      setError('Account not found. Please register.')
+      return
+    }
+
+    // If account does not exist, create it locally and log in (prototype behavior).
+    try {
+      registerAccount(normalized)
+      setLoggedInUser(normalized)
+      onLoginSuccess(normalized)
+      clear()
+      onClose()
+    } catch (e) {
+      setError('Failed to create local account: ' + (e as Error).message)
     }
   }
 
@@ -102,18 +112,13 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
       setError('Enter a valid phone number')
       return
     }
-    if (!passwordMeetsRequirements(pw)) {
-      setError('Password does not meet complexity requirements')
-      return
-    }
-    if (pw !== pwc) {
-      setError('Passwords do not match')
-      return
-    }
+    // Prototype: do not enforce password complexity. Passwords are optional/loose.
 
     // choose identifier: email if provided, otherwise phone
     const identifier = e || ph
     registerAccount(identifier)
+
+    // Prototype: local registration only (no backend).
 
     // show thank you message and return to login screen (do not auto-login in prototype)
     setRegistered(true)
@@ -285,7 +290,7 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
                   </div>
 
                   <div style={{ marginTop: 12, fontSize: 12 }}>
-                    Password must be at least 10 characters and include upper and lower case letters, numbers and symbols.
+                    Password is optional for this prototype. Any value will be accepted.
                   </div>
 
                   <div style={{ marginTop: 10, fontSize: 12 }}>
