@@ -1,0 +1,27 @@
+[
+  {
+    "id": "rev_001",
+    "eventId": "evt_001",
+    "reviewerId": "reviewer01@example.org",
+    "rating": 5,
+    "text": "Great morning — teams were friendly and the organiser kept things moving. Perfect for beginners and social players.",
+    "createdAt": 1777544053600
+  },
+  {
+    "id": "rev_002",
+    "eventId": "evt_005",
+    "reviewerId": "reviewer02@example.org",
+    "rating": 4,
+    "text": "Nice social vibe and quick rotations. Tables were a bit worn but still fun — would come again.",
+    "createdAt": 1777544053610
+  },
+  {
+    "id": "rev_003",
+    "eventId": "evt_010",
+    "reviewerId": "reviewer01@example.org",
+    "rating": 5,
+    "text": "Beautiful route and well-paced groups. I appreciated the meetup organisation and the water stop mid-run.",
+    "createdAt": 1777544053620
+  }
+]
+
