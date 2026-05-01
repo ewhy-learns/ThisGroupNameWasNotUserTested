@@ -120,78 +120,82 @@ export default function App() {
 
   return (
     <div className="app-root">
-      <header className="app-header">
-        <h1>Demo1 Mobile</h1>
-        <div className="header-actions">
-          {/* message icon - only show when signed in */}
-          {user && (
-            <button aria-label="Messages" title="Messages" className="icon-btn" style={{ marginRight: 8 }} onClick={() => alert('Messages (prototype)')}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-              </svg>
-            </button>
-          )}
-          {user ? (
-            <div className="avatar-wrap" ref={menuRef}>
-              <button
-                type="button"
-                aria-haspopup="true"
-                aria-expanded={avatarMenuOpen}
-                className="avatar"
-                onClick={() => setAvatarMenuOpen(open => !open)}
-              >
-                {user.charAt(0).toUpperCase()}
-              </button>
-              {avatarMenuOpen && (
-                <div className="avatar-menu" role="menu">
-                  <button type="button" className="menu-item" role="menuitem" onClick={() => { setViewProfileOpen(true); setAvatarMenuOpen(false) }}>Edit profile</button>
-                  <button type="button" className="menu-item" role="menuitem" onClick={() => { alert('History (prototype)') ; setAvatarMenuOpen(false) }}>History</button>
-                  <button type="button" className="menu-item" role="menuitem" onClick={() => { setSkillOpen(true); setAvatarMenuOpen(false) }}>Skill check</button>
-                  <button type="button" className="menu-item" role="menuitem" onClick={() => { handleLogout(); setAvatarMenuOpen(false) }}>Logout</button>
+      {user && (
+        <>
+          <header className="app-header">
+            <h1>Demo1 Mobile</h1>
+            <div className="header-actions">
+              {/* message icon - only show when signed in */}
+              {user && (
+                <button aria-label="Messages" title="Messages" className="icon-btn" style={{ marginRight: 8 }} onClick={() => alert('Messages (prototype)')}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                  </svg>
+                </button>
+              )}
+              {user ? (
+                <div className="avatar-wrap" ref={menuRef}>
+                  <button
+                    type="button"
+                    aria-haspopup="true"
+                    aria-expanded={avatarMenuOpen}
+                    className="avatar"
+                    onClick={() => setAvatarMenuOpen(open => !open)}
+                  >
+                    {user.charAt(0).toUpperCase()}
+                  </button>
+                  {avatarMenuOpen && (
+                    <div className="avatar-menu" role="menu">
+                      <button type="button" className="menu-item" role="menuitem" onClick={() => { setViewProfileOpen(true); setAvatarMenuOpen(false) }}>Edit profile</button>
+                      <button type="button" className="menu-item" role="menuitem" onClick={() => { alert('History (prototype)') ; setAvatarMenuOpen(false) }}>History</button>
+                      <button type="button" className="menu-item" role="menuitem" onClick={() => { setSkillOpen(true); setAvatarMenuOpen(false) }}>Skill check</button>
+                      <button type="button" className="menu-item" role="menuitem" onClick={() => { handleLogout(); setAvatarMenuOpen(false) }}>Logout</button>
+                    </div>
+                  )}
                 </div>
+              ) : (
+                <button type="button" className="btn" onClick={() => setAuthOpen(true)}>Login</button>
               )}
             </div>
-          ) : (
-            <button type="button" className="btn" onClick={() => setAuthOpen(true)}>Login</button>
-          )}
-        </div>
-      </header>
+          </header>
 
-      <main className="app-main">
-        {mainView === 'map' ? <MapView /> : <MySessions userId={user ?? ''} />}
-      </main>
+          <main className="app-main">
+            {mainView === 'map' ? <MapView /> : <MySessions userId={user ?? ''} />}
+          </main>
 
-        <nav className="bottom-nav" role="navigation" aria-label="Main navigation">
-        {/* simple active styling for the bottom nav so current view is highlighted */}
-        <button aria-label="Create session" onClick={() => {
-            if (!user) {
-              setAuthRequiredOpen(true)
-            } else {
-              setEventOpen(true)
-            }
-          }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          <span>Create session</span>
-        </button>
-        <button aria-label="My sessions" onClick={() => setMainView('mySessions')} style={mainView === 'mySessions' ? { color: '#0B61FF', fontWeight: 700 } : undefined}>
-          {/* list / sessions icon */}
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="4" width="18" height="4" rx="1" />
-            <rect x="3" y="10" width="18" height="4" rx="1" />
-            <rect x="3" y="16" width="18" height="4" rx="1" />
-          </svg>
-          <span>My sessions</span>
-        </button>
-        <button aria-label="Find session" onClick={() => setMainView('map')} style={mainView === 'map' ? { color: '#0B61FF', fontWeight: 700 } : undefined}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <span>Find session</span>
-        </button>
-      </nav>
+            <nav className="bottom-nav" role="navigation" aria-label="Main navigation">
+            {/* simple active styling for the bottom nav so current view is highlighted */}
+            <button aria-label="Create session" onClick={() => {
+                if (!user) {
+                  setAuthRequiredOpen(true)
+                } else {
+                  setEventOpen(true)
+                }
+              }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              <span>Create session</span>
+            </button>
+            <button aria-label="My sessions" onClick={() => setMainView('mySessions')} style={mainView === 'mySessions' ? { color: '#0B61FF', fontWeight: 700 } : undefined}>
+              {/* list / sessions icon */}
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="4" rx="1" />
+                <rect x="3" y="10" width="18" height="4" rx="1" />
+                <rect x="3" y="16" width="18" height="4" rx="1" />
+              </svg>
+              <span>My sessions</span>
+            </button>
+            <button aria-label="Find session" onClick={() => setMainView('map')} style={mainView === 'map' ? { color: '#0B61FF', fontWeight: 700 } : undefined}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <span>Find session</span>
+            </button>
+          </nav>
+        </>
+      )}
 
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onLoginSuccess={handleLoginSuccess} initialMode={authModalMode} />
       <AuthRequiredModal open={authRequiredOpen} onClose={() => setAuthRequiredOpen(false)} onLogin={() => { setAuthModalMode('login'); setAuthOpen(true) }} onRegister={() => { setAuthModalMode('register'); setAuthOpen(true) }} />
