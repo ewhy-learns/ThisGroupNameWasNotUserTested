@@ -1,5 +1,5 @@
 import React from 'react'
-import { readEventDraft, saveEventDraft, clearEventDraft, saveEvent, getProfile, listEvents, suggestTag } from './AuthService'
+import { readEventDraft, saveEventDraft, clearEventDraft, saveEvent, getProfile, listEvents, suggestTag, saveDraftSession, deleteDraftSession, getPublicIdentityLabel } from './AuthService'
 import { LARGE_TAGS } from './ProfileModal'
 
 type Props = { open: boolean; onClose: () => void; userId: string }
@@ -7,6 +7,27 @@ type Props = { open: boolean; onClose: () => void; userId: string }
 // use the full LARGE_TAGS list for activity search
 const ACTIVITY_TYPES = LARGE_TAGS
 const VIBES = ['Child Supervision','Child Participation','Casual','Social','Competitive','LGBTIQ+','Mens','Womens','U25s','Retirees','Mums','Dads','Aboriginal/Torres Strait Islander','18+']
+const DEMO_TEMPLATE_SESSION = {
+  id: 'template_demo_session',
+  title: 'Demo template session',
+  activity: 'Social Run',
+  location: 'Armidale Riverbank Reserve, Riverbank Rd, Armidale NSW 2350',
+  locationCoords: { lat: -30.5032, lon: 151.6615 },
+  startTime: '07:00',
+  endTime: '08:00',
+  duration: 60,
+  visibility: 'Public',
+  description: 'Friendly mock session template with example values you can quickly adapt.',
+  suggestedExperience: 'Beginner',
+  participantsMin: 4,
+  participantsMax: 12,
+  cost: 'Free',
+  equipment: 'Running shoes, water bottle',
+  vibes: ['Casual', 'Social'],
+  photoDataUrl: null,
+  createdAt: Date.now(),
+  templateName: 'Demo template session',
+}
 
 export default function EventModal({ open, onClose, userId }: Props) {
   const [step, setStep] = React.useState<number>(1)
@@ -49,7 +70,7 @@ export default function EventModal({ open, onClose, userId }: Props) {
     locTimer.current = window.setTimeout(async () => {
       try {
         const url = 'https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&q=' + encodeURIComponent(locQuery)
-        const res = await fetch(url, { headers: { 'Accept': 'application/json', 'User-Agent': 'Demo1/1.0 (+http://example.com)' } })
+        const res = await fetch(url, { headers: { 'Accept': 'application/json' } })
         const data = await res.json()
         setLocMatches(data || [])
       } catch (e) { console.warn('Location lookup failed', e); setLocMatches([]) }
@@ -64,13 +85,28 @@ export default function EventModal({ open, onClose, userId }: Props) {
       const all = listEvents()
       // filter events created by this user (host) if present
       const mine = all.filter(e => e.host === userId)
-      setTemplates(mine.sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0)))
-    } catch (e) { setTemplates([]) }
+      setTemplates([DEMO_TEMPLATE_SESSION, ...mine.sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0))])
+    } catch (e) { setTemplates([DEMO_TEMPLATE_SESSION]) }
   }, [showTemplates, userId])
 
   // validation state
   const [missingFields, setMissingFields] = React.useState<string[]>([])
   const [validationMessage, setValidationMessage] = React.useState<string | null>(null)
+
+  const participantRangeMessage = React.useMemo(() => {
+    const min = draft.participantsMin
+    const max = draft.participantsMax
+    if (typeof min !== 'number' || Number.isNaN(min) || typeof max !== 'number' || Number.isNaN(max)) return null
+    if (min <= max) return null
+    return 'Minimum participants cannot be greater than maximum participants. Reduce the minimum or increase the maximum to continue.'
+  }, [draft.participantsMin, draft.participantsMax])
+
+  const ensureValidParticipantRange = React.useCallback(() => {
+    if (!participantRangeMessage) return true
+    setStep(2)
+    setValidationMessage(participantRangeMessage)
+    return false
+  }, [participantRangeMessage])
 
   const validateStep1 = () => {
     const required = ['title','activity','location','date','startTime','duration']
@@ -105,6 +141,12 @@ export default function EventModal({ open, onClose, userId }: Props) {
     setActivityChoicePending(false)
   }, [step])
 
+  React.useEffect(() => {
+    if (!participantRangeMessage && validationMessage && validationMessage.includes('Minimum participants cannot be greater')) {
+      setValidationMessage(null)
+    }
+  }, [participantRangeMessage, validationMessage])
+
   // recalc endTime whenever startTime or duration changes
   React.useEffect(() => {
     const st = draft.startTime
@@ -124,7 +166,16 @@ export default function EventModal({ open, onClose, userId }: Props) {
   if (!open) return null
 
   const saveDraft = () => {
-    saveEventDraft(draft)
+    if (!ensureValidParticipantRange()) return false
+    const organiserName = getPublicIdentityLabel(userId, getProfile(userId) || undefined)
+    const baseDraft = { ...draft, host: userId, organiserName }
+    const stored = saveDraftSession(baseDraft)
+    const nextDraft = stored ? { ...baseDraft, id: stored.id } : baseDraft
+    saveEventDraft(nextDraft)
+    if (stored?.id && draft.id !== stored.id) {
+      setDraft((prev: any) => ({ ...prev, id: stored.id, host: userId, organiserName }))
+    }
+    return true
   }
 
   const publish = () => {
@@ -136,12 +187,15 @@ export default function EventModal({ open, onClose, userId }: Props) {
       setValidationMessage('Please complete the highlighted fields before publishing.')
       return
     }
+    if (!ensureValidParticipantRange()) return
     // ensure we record the host for created events
-    // Do not set organiserName to a raw email address. Prefer displayName, otherwise leave undefined so UIs don't expose emails.
-    const organiserName = getProfile(userId)?.displayName || (userId && typeof userId === 'string' && !userId.includes('@') ? userId : undefined)
+    const organiserName = getPublicIdentityLabel(userId, getProfile(userId) || undefined)
     const toSave = { ...draft, host: userId, organiserName }
     const evt = saveEvent(toSave)
     if (evt) {
+      if (draft.id && String(draft.id).startsWith('draft_')) {
+        deleteDraftSession(String(draft.id))
+      }
       clearEventDraft()
       // show simple confirmation
       setValidationMessage(null)
@@ -210,11 +264,13 @@ export default function EventModal({ open, onClose, userId }: Props) {
                     delete copy.id
                     delete copy.createdAt
                     delete copy.date
+                    delete copy.updatedAt
+                    delete copy.isDraft
                     setDraft(prev => ({ ...prev, ...copy }))
                     setShowTemplates(false)
                   }}>
                     <div style={{ fontWeight: 700 }}>{t.title || t.activity || 'Untitled'}</div>
-                    <div style={{ fontSize: 12, color: '#6b7280' }}>{new Date(t.createdAt).toLocaleString()}</div>
+                    <div style={{ fontSize: 12, color: '#6b7280' }}>{t.templateName ? t.templateName : new Date(t.createdAt).toLocaleString()}</div>
                   </div>
                 ))
               )}
@@ -327,7 +383,7 @@ export default function EventModal({ open, onClose, userId }: Props) {
               </select>
 
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                <button className="btn ghost" onClick={() => { saveDraft(); alert('Draft saved') }}>Save as draft</button>
+                <button className="btn ghost" onClick={() => { if (saveDraft()) alert('Draft session saved to My sessions') }}>Save as draft</button>
                 <div style={{ flex: 1 }} />
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
                   {validationMessage && <div className="error">{validationMessage}</div>}
@@ -339,8 +395,7 @@ export default function EventModal({ open, onClose, userId }: Props) {
                         setField('activity', a)
                         setActivityChoicePending(false)
                         setValidationMessage(null)
-                        saveDraft()
-                        setStep(2)
+                        if (saveDraft()) setStep(2)
                       }}>Add anyway</button>
                       <button className="btn" onClick={() => {
                         const a = activityQuery && activityQuery.trim() ? activityQuery.trim() : 'Other'
@@ -348,8 +403,7 @@ export default function EventModal({ open, onClose, userId }: Props) {
                         setField('activity', a)
                         setActivityChoicePending(false)
                         setValidationMessage(null)
-                        saveDraft()
-                        setStep(2)
+                        if (saveDraft()) setStep(2)
                       }}>Add & suggest</button>
                     </div>
                   ) : (
@@ -377,13 +431,14 @@ export default function EventModal({ open, onClose, userId }: Props) {
               <div style={{ display: 'flex', gap: 8 }}>
                 <div style={{ flex: 1 }}>
                   <label className="input-label">Participants (min)</label>
-                  <input className="input" type="number" value={draft.participantsMin || ''} onChange={e => setField('participantsMin', Number(e.target.value) || undefined)} />
+                  <input className="input" type="number" value={draft.participantsMin || ''} onChange={e => setField('participantsMin', Number(e.target.value) || undefined)} style={participantRangeMessage ? { borderColor: '#e11d48' } : undefined} aria-invalid={!!participantRangeMessage} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <label className="input-label">Participants (max)</label>
-                  <input className="input" type="number" value={draft.participantsMax || ''} onChange={e => setField('participantsMax', Number(e.target.value) || undefined)} />
+                  <input className="input" type="number" value={draft.participantsMax || ''} onChange={e => setField('participantsMax', Number(e.target.value) || undefined)} style={participantRangeMessage ? { borderColor: '#e11d48' } : undefined} aria-invalid={!!participantRangeMessage} />
                 </div>
               </div>
+              {participantRangeMessage && <div className="error" style={{ marginTop: 8 }}>{participantRangeMessage}</div>}
 
               <label className="input-label">Costs</label>
               <input className="input" value={draft.cost || ''} onChange={e => setField('cost', e.target.value)} placeholder="E.g. Free, $5 per person" />
@@ -392,9 +447,9 @@ export default function EventModal({ open, onClose, userId }: Props) {
               <input className="input" value={draft.equipment || ''} onChange={e => setField('equipment', e.target.value)} placeholder="E.g. Running shoes, water bottle" />
 
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                <button className="btn ghost" onClick={() => { saveDraft(); setStep(1) }}>Back</button>
-                <button className="btn ghost" onClick={() => { saveDraft(); alert('Draft saved') }}>Save as draft</button>
-                <button className="btn" onClick={() => { saveDraft(); setStep(3) }}>Save and continue</button>
+                <button className="btn ghost" onClick={() => { setValidationMessage(null); setStep(1) }}>Back</button>
+                <button className="btn ghost" onClick={() => { if (saveDraft()) alert('Draft session saved to My sessions') }}>Save as draft</button>
+                <button className="btn" onClick={() => { if (saveDraft()) setStep(3) }}>Save and continue</button>
               </div>
             </div>
           )}
@@ -432,8 +487,8 @@ export default function EventModal({ open, onClose, userId }: Props) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
                 {validationMessage && <div className="error">{validationMessage}</div>}
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn ghost" onClick={() => { saveDraft(); setStep(2) }}>Back</button>
-                  <button className="btn ghost" onClick={() => { saveDraft(); alert('Draft saved') }}>Save as draft</button>
+                  <button className="btn ghost" onClick={() => { setValidationMessage(null); setStep(2) }}>Back</button>
+                  <button className="btn ghost" onClick={() => { if (saveDraft()) alert('Draft session saved to My sessions') }}>Save as draft</button>
                   <button className="btn" onClick={() => { publish() }}>Publish</button>
                 </div>
               </div>

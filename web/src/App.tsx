@@ -8,7 +8,8 @@ import SkillCheckModal from './SkillCheckModal'
 import EventModal from './EventModal'
 import ViewSession from './ViewSession'
 import AuthRequiredModal from './AuthRequiredModal'
-import { getLoggedInUser, logout, isProfileComplete } from './AuthService'
+import MessagesModal, { MessageTarget } from './MessagesModal'
+import { getLoggedInUser, logout, isProfileComplete, saveEventDraft, getPublicIdentityLabel, getUnreadMessageCount } from './AuthService'
 
 export default function App() {
   const [authOpen, setAuthOpen] = useState(false)
@@ -23,14 +24,33 @@ export default function App() {
   const [eventOpen, setEventOpen] = useState(false)
   const [viewSessionOpen, setViewSessionOpen] = useState(false)
   const [viewSessionId, setViewSessionId] = useState<string | undefined>(undefined)
+  const [messagesOpen, setMessagesOpen] = useState(false)
+  const [messagesTarget, setMessagesTarget] = useState<MessageTarget | null>({ type: 'inbox' })
   const [mainView, setMainView] = useState<'map'|'mySessions'>('map')
   const [authRequiredOpen, setAuthRequiredOpen] = useState(false)
   const [authModalMode, setAuthModalMode] = useState<'login'|'register'|undefined>(undefined)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const publicUserLabel = user ? getPublicIdentityLabel(user) : ''
+  const [unreadMessages, setUnreadMessages] = useState(0)
 
   useEffect(() => {
     setUser(getLoggedInUser())
   }, [])
+
+  useEffect(() => {
+    if (!user) {
+      setUnreadMessages(0)
+      return
+    }
+    const refreshUnread = () => setUnreadMessages(getUnreadMessageCount(user))
+    refreshUnread()
+    window.addEventListener('demo1_messages_updated', refreshUnread)
+    window.addEventListener('demo1_events_updated', refreshUnread)
+    return () => {
+      window.removeEventListener('demo1_messages_updated', refreshUnread)
+      window.removeEventListener('demo1_events_updated', refreshUnread)
+    }
+  }, [user])
 
   // toast for simple feedback (e.g. session created)
   const [toastOpen, setToastOpen] = useState(false)
@@ -77,11 +97,20 @@ export default function App() {
       } catch (e) {}
     }
     window.addEventListener('demo1_require_auth', onRequireAuth as EventListener)
+    const onOpenMessages = (ev: any) => {
+      try {
+        const detail = ev?.detail || { type: 'inbox' }
+        setMessagesTarget(detail)
+        setMessagesOpen(true)
+      } catch {}
+    }
+    window.addEventListener('demo1_open_messages', onOpenMessages as EventListener)
     return () => {
       window.removeEventListener('demo1_events_updated', onEventsUpdated as EventListener)
       window.removeEventListener('demo1_open_event', onOpenEvent as EventListener)
       window.removeEventListener('demo1_open_profile', onOpenProfile as EventListener)
       window.removeEventListener('demo1_require_auth', onRequireAuth as EventListener)
+      window.removeEventListener('demo1_open_messages', onOpenMessages as EventListener)
     }
   }, [])
 
@@ -118,6 +147,17 @@ export default function App() {
     setUser(null)
   }
 
+  const handleEditDraft = (draft: any) => {
+    try {
+      if (!draft) return
+      const { createdAt, updatedAt, isDraft, templateName, ...editable } = draft
+      saveEventDraft(editable)
+      setEventOpen(true)
+    } catch (e) {
+      console.warn('[App] failed to open draft for editing', e)
+    }
+  }
+
   return (
     <div className="app-root">
       {/* header is always visible */}
@@ -126,10 +166,15 @@ export default function App() {
         <div className="header-actions">
           {/* message icon - only show when signed in */}
           {user && (
-            <button aria-label="Messages" title="Messages" className="icon-btn" style={{ marginRight: 8 }} onClick={() => alert('Messages (prototype)')}>
+            <button aria-label="Messages" title="Messages" className="icon-btn" style={{ marginRight: 8, position: 'relative' }} onClick={() => { setMessagesTarget({ type: 'inbox' }); setMessagesOpen(true) }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
               </svg>
+              {unreadMessages > 0 && (
+                <span style={{ position: 'absolute', top: 2, right: 2, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: '#2563eb', color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {unreadMessages > 99 ? '99+' : unreadMessages}
+                </span>
+              )}
             </button>
           )}
           {user ? (
@@ -141,7 +186,7 @@ export default function App() {
                 className="avatar"
                 onClick={() => setAvatarMenuOpen(open => !open)}
               >
-                {user.charAt(0).toUpperCase()}
+                {(publicUserLabel || user).charAt(0).toUpperCase()}
               </button>
               {avatarMenuOpen && (
                 <div className="avatar-menu" role="menu">
@@ -160,7 +205,7 @@ export default function App() {
 
       {/* main content is always visible */}
       <main className="app-main">
-        {mainView === 'map' ? <MapView /> : <MySessions userId={user ?? ''} />}
+        {mainView === 'map' ? <MapView /> : <MySessions userId={user ?? ''} onEditDraft={handleEditDraft} />}
       </main>
 
       {/* bottom nav: only visible when logged in */}
@@ -211,10 +256,12 @@ export default function App() {
         onEditVibes={() => { setProfileInitialStep(2); setProfileOpen(true); setViewProfileOpen(false); }}
         onEditAbout={() => { setProfileInitialStep(3); setProfileOpen(true); setViewProfileOpen(false); }}
         onEditGender={() => { setProfileInitialStep(4); setProfileOpen(true); setViewProfileOpen(false); }}
+        onEditIdentity={() => { setProfileInitialStep(5); setProfileOpen(true); setViewProfileOpen(false); }}
       />
       <SkillCheckModal open={skillOpen} onClose={() => setSkillOpen(false)} userId={user ?? ''} />
       <EventModal open={eventOpen} onClose={() => setEventOpen(false)} userId={user ?? ''} />
       <ViewSession open={viewSessionOpen} eventId={viewSessionId} onClose={() => { setViewSessionOpen(false); setViewSessionId(undefined) }} userId={user ?? ''} />
+      <MessagesModal open={messagesOpen} onClose={() => setMessagesOpen(false)} userId={user ?? ''} initialTarget={messagesTarget} />
       {/* toast */}
       {toastOpen && (
         <div style={{ position: 'fixed', right: 20, top: 84, zIndex: 3000 }} aria-live="polite">

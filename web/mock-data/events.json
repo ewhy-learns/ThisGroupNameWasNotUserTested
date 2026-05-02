@@ -1,242 +1,879 @@
 [
   {
     "id": "evt_001",
-    "title": "Social Soccer - Armidale",
-    "activity": "Social Soccer",
-    "location": "Eastwood Reserve, Armidale, NSW",
-    "locationCoords": { "lat": -30.51, "lon": 151.648 },
-    "date": "2026-05-05",
-    "startTime": "10:00",
-    "duration": 90,
-    "endTime": "11:30",
+    "title": "Sunrise Social Run — Armidale Riverbank",
+    "activity": "Social Run",
+    "location": "Armidale Riverbank Reserve, Riverbank Rd, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.5032,
+      "lon": 151.6615
+    },
+    "date": "2026-05-03",
+    "startTime": "06:15",
+    "duration": 45,
+    "endTime": "07:00",
     "visibility": "Public",
-    "description": "Casual pick-up soccer focused on fun and inclusive small-sided games. Suitable for all skill levels — we rotate teams and prioritise fair play.",
-    "participantsMin": 4,
-    "participantsMax": 12,
-    "participants": ["participant01@example.org","participant02@example.org"],
+    "description": "Easy-paced social run along the riverbank — great for beginners and those who enjoy a chatty group pace.",
+    "participantsMin": 2,
+    "participantsMax": 20,
+    "participants": [
+      "participant01@example.org"
+    ],
     "cost": "Free",
-    "equipment": "Bring shoes",
-    "vibes": ["Casual"],
+    "equipment": "Running shoes",
+    "vibes": [
+      "Casual",
+      "Outdoors"
+    ],
     "photoDataUrl": null,
-    "updatedAt": 1777544053538,
-    "createdAt": 1777544053538,
+    "updatedAt": 1777638000000,
+    "createdAt": 1777638000000,
     "host": "organiser01@example.org",
-    "organiserName": "Organizer 1"
+    "organiserName": "Alex Smith"
   },
   {
     "id": "evt_002",
-    "title": "Beach Volleyball - Perth",
-    "activity": "Beach Volleyball",
-    "location": "Fremantle Oval, Perth, WA",
-    "locationCoords": { "lat": -32.056, "lon": 115.746 },
-    "date": "2026-05-12",
-    "startTime": "15:00",
-    "duration": 120,
-    "endTime": "17:00",
+    "title": "Pick-up Soccer — Eastwood Reserve",
+    "activity": "Social Soccer",
+    "location": "Eastwood Reserve, Eastwood Rd, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.507,
+      "lon": 151.6492
+    },
+    "date": "2026-05-04",
+    "startTime": "17:30",
+    "duration": 75,
+    "endTime": "18:45",
     "visibility": "Public",
-    "description": "Friendly beach volleyball played on mixed teams. Expect relaxed competition, basic drills to warm up, then open games.",
-    "participantsMin": 4,
-    "participantsMax": 16,
-    "participants": ["participant03@example.org"],
+    "description": "Bring boots or runners. Mixed teams, small-sided games and a friendly vibe. All levels welcome.",
+    "participantsMin": 6,
+    "participantsMax": 18,
+    "participants": [],
     "cost": "Free",
-    "equipment": "Provided",
-    "vibes": ["Social"],
+    "equipment": "Boots/cleats",
+    "vibes": [
+      "Social",
+      "Casual"
+    ],
     "photoDataUrl": null,
-    "updatedAt": 1777544053539,
-    "createdAt": 1777544053539,
+    "updatedAt": 1777638060000,
+    "createdAt": 1777638060000,
     "host": "organiser02@example.org",
-    "organiserName": "Organizer 2"
+    "organiserName": "Taylor Nguyen"
   },
   {
     "id": "evt_003",
-    "title": "Yoga in the Park - Canberra",
-    "activity": "Yoga in the Park",
-    "location": "Northside Oval, Canberra, ACT",
-    "locationCoords": { "lat": -35.278, "lon": 149.138 },
-    "date": "2026-05-20",
-    "startTime": "09:00",
-    "duration": 60,
-    "endTime": "10:00",
+    "title": "Family Park Cricket — University Oval",
+    "activity": "Cricket",
+    "location": "University Oval, University of New England, Armidale NSW 2351",
+    "locationCoords": {
+      "lat": -30.4948,
+      "lon": 151.6549
+    },
+    "date": "2026-05-06",
+    "startTime": "10:30",
+    "duration": 120,
+    "endTime": "12:30",
     "visibility": "Public",
-    "description": "A gentle morning yoga session in the park with accessible flows, breath work, and a short cool-down suitable for all levels.",
-    "participantsMin": 3,
-    "participantsMax": 20,
-    "participants": ["participant04@example.org"],
-    "cost": "$5",
-    "equipment": "Bring mat",
-    "vibes": ["Beginner-friendly"],
+    "description": "A relaxed family-friendly afternoon of informal cricket — nets for kids and casual batting for adults.",
+    "participantsMin": 6,
+    "participantsMax": 24,
+    "participants": [],
+    "cost": "Free",
+    "equipment": "Bring hat and water",
+    "vibes": [
+      "Family",
+      "Casual"
+    ],
     "photoDataUrl": null,
-    "updatedAt": 1777544053540,
-    "createdAt": 1777544053540,
-    "host": "organiser03@example.org",
-    "organiserName": "Organizer 3"
+    "updatedAt": 1777638120000,
+    "createdAt": 1777638120000,
+    "host": "organiser04@example.org",
+    "organiserName": "Morgan Patel"
   },
   {
     "id": "evt_004",
-    "title": "Cricket Net Session - Armidale",
-    "activity": "Cricket Net Session",
-    "location": "University Oval, Armidale, NSW",
-    "locationCoords": { "lat": -30.495, "lon": 151.655 },
+    "title": "Beginner Yoga — Central Park",
+    "activity": "Yoga",
+    "location": "Central Park, Central Park Rd, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.5058,
+      "lon": 151.6618
+    },
+    "date": "2026-05-07",
+    "startTime": "08:30",
+    "duration": 60,
+    "endTime": "09:30",
+    "visibility": "Public",
+    "description": "Gentle morning yoga suitable for beginners — bring a mat; we finish with a short guided relaxation.",
+    "participantsMin": 4,
+    "participantsMax": 20,
+    "participants": [
+      "participant04@example.org"
+    ],
+    "cost": "$5",
+    "equipment": "Yoga mat",
+    "vibes": [
+      "Beginner-friendly",
+      "Relaxed"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777638180000,
+    "createdAt": 1777638180000,
+    "host": "organiser03@example.org",
+    "organiserName": "Jordan Lee"
+  },
+  {
+    "id": "evt_005",
+    "title": "Trail Skills Workshop — Dangars Gorge Trailhead",
+    "activity": "Trail Run",
+    "location": "Dangars Gorge Trailhead, Dangars Gorge Rd, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.5785,
+      "lon": 151.655
+    },
+    "date": "2026-05-09",
+    "startTime": "07:00",
+    "duration": 90,
+    "endTime": "08:30",
+    "visibility": "Public",
+    "description": "A short workshop focused on trail techniques: ascending, descending and safe line choices — suitable for intermediate runners.",
+    "participantsMin": 4,
+    "participantsMax": 12,
+    "participants": [],
+    "cost": "$10",
+    "equipment": "Trail shoes",
+    "vibes": [
+      "Skills-focused",
+      "Outdoors"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777638240000,
+    "createdAt": 1777638240000,
+    "host": "organiser01@example.org",
+    "organiserName": "Alex Smith"
+  },
+  {
+    "id": "evt_006",
+    "title": "Table Tennis Meet — Community Hall",
+    "activity": "Table Tennis",
+    "location": "Armidale Community Hall, 45 Community St, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.502,
+      "lon": 151.6555
+    },
+    "date": "2026-05-10",
+    "startTime": "11:00",
+    "duration": 90,
+    "endTime": "12:30",
+    "visibility": "Public",
+    "description": "Indoor tables, casual rotation and friendly coaching — all ages welcome and we supply bats on request.",
+    "participantsMin": 2,
+    "participantsMax": 12,
+    "participants": [
+      "participant05@example.org"
+    ],
+    "cost": "Free",
+    "equipment": "Indoor shoes",
+    "vibes": [
+      "Family",
+      "Social"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777638300000,
+    "createdAt": 1777638300000,
+    "host": "organiser05@example.org",
+    "organiserName": "Casey Brown"
+  },
+  {
+    "id": "evt_007",
+    "title": "Mountain Bike Intro — Saumarez Falls Carpark",
+    "activity": "Mountain Biking",
+    "location": "Saumarez Falls Picnic Area, Saumarez Rd, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.586,
+      "lon": 151.661
+    },
+    "date": "2026-05-12",
+    "startTime": "09:00",
+    "duration": 120,
+    "endTime": "11:00",
+    "visibility": "Public",
+    "description": "Beginner-friendly ride on gentle singletrack; we cover basic bike handling and trail etiquette.",
+    "participantsMin": 2,
+    "participantsMax": 10,
+    "participants": [],
+    "cost": "Donation",
+    "equipment": "Helmet, mountain bike",
+    "vibes": [
+      "Outdoors",
+      "Skills-focused"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777638360000,
+    "createdAt": 1777638360000,
+    "host": "organiser02@example.org",
+    "organiserName": "Taylor Nguyen"
+  },
+  {
+    "id": "evt_008",
+    "title": "Lunchtime Badminton — Sports Centre",
+    "activity": "Badminton",
+    "location": "Armidale Sports Centre, Sports Centre Dr, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.5012,
+      "lon": 151.6599
+    },
+    "date": "2026-05-13",
+    "startTime": "12:30",
+    "duration": 60,
+    "endTime": "13:30",
+    "visibility": "Public",
+    "description": "Casual indoor badminton rotation for players of varying levels. Rackets available on request.",
+    "participantsMin": 2,
+    "participantsMax": 12,
+    "participants": [],
+    "cost": "Free",
+    "equipment": "Racket (optional)",
+    "vibes": [
+      "Social"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777638420000,
+    "createdAt": 1777638420000,
+    "host": "organiser04@example.org",
+    "organiserName": "Morgan Patel"
+  },
+  {
+    "id": "evt_009",
+    "title": "Sunset Walk and Talk — Armidale Botanic Gardens",
+    "activity": "Walking",
+    "location": "Armidale Botanic Gardens, Botanic Gardens Rd, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.5065,
+      "lon": 151.6551
+    },
+    "date": "2026-05-14",
+    "startTime": "17:00",
+    "duration": 60,
+    "endTime": "18:00",
+    "visibility": "Public",
+    "description": "An easy guided walk around the gardens — great for new residents wanting to meet locals and learn plant stories.",
+    "participantsMin": 3,
+    "participantsMax": 25,
+    "participants": [
+      "participant02@example.org"
+    ],
+    "cost": "Free",
+    "equipment": "Comfortable shoes",
+    "vibes": [
+      "Relaxed",
+      "Community"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777638480000,
+    "createdAt": 1777638480000,
+    "host": "organiser05@example.org",
+    "organiserName": "Casey Brown"
+  },
+  {
+    "id": "evt_010",
+    "title": "Park Pilates Express — Central Park",
+    "activity": "Pilates",
+    "location": "Central Park, Central Park Rd, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.5058,
+      "lon": 151.6618
+    },
+    "date": "2026-05-15",
+    "startTime": "07:30",
+    "duration": 45,
+    "endTime": "08:15",
+    "visibility": "Public",
+    "description": "Short pilates session to kickstart your day — focus on core and mobility with gentle progressions.",
+    "participantsMin": 3,
+    "participantsMax": 18,
+    "participants": [],
+    "cost": "$5",
+    "equipment": "Mat",
+    "vibes": [
+      "Beginner-friendly",
+      "Energising"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777638540000,
+    "createdAt": 1777638540000,
+    "host": "organiser03@example.org",
+    "organiserName": "Jordan Lee"
+  },
+  {
+    "id": "evt_011",
+    "title": "Community Swim Laps — Armidale Pool",
+    "activity": "Swimming",
+    "location": "Armidale Aquatic Centre, Aquatic Ave, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.4995,
+      "lon": 151.6602
+    },
+    "date": "2026-05-16",
+    "startTime": "18:00",
+    "duration": 60,
+    "endTime": "19:00",
+    "visibility": "Public",
+    "description": "Laps for fitness with friendly lane rotation and light coaching tips — suitable for confident swimmers.",
+    "participantsMin": 4,
+    "participantsMax": 16,
+    "participants": [],
+    "cost": "Free",
+    "equipment": "Towel",
+    "vibes": [
+      "Fitness",
+      "Community"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777638600000,
+    "createdAt": 1777638600000,
+    "host": "organiser05@example.org",
+    "organiserName": "Casey Brown"
+  },
+  {
+    "id": "evt_012",
+    "title": "Strength and Stretch — University Gym",
+    "activity": "Strength",
+    "location": "UNE Sport & Recreation Centre, University of New England, Armidale NSW 2351",
+    "locationCoords": {
+      "lat": -30.493,
+      "lon": 151.6525
+    },
+    "date": "2026-05-17",
+    "startTime": "06:30",
+    "duration": 45,
+    "endTime": "07:15",
+    "visibility": "Public",
+    "description": "Short strength circuit and mobility work suitable for all levels; modifications provided.",
+    "participantsMin": 2,
+    "participantsMax": 12,
+    "participants": [],
+    "cost": "$5",
+    "equipment": "Gym shoes",
+    "vibes": [
+      "Skills-focused",
+      "Fitness"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777638660000,
+    "createdAt": 1777638660000,
+    "host": "organiser04@example.org",
+    "organiserName": "Morgan Patel"
+  },
+  {
+    "id": "evt_013",
+    "title": "Forest Orienteering — Hillgrove Track",
+    "activity": "Orienteering",
+    "location": "Hillgrove Track Start, Hillgrove Rd, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.57,
+      "lon": 151.7
+    },
+    "date": "2026-05-18",
+    "startTime": "09:00",
+    "duration": 120,
+    "endTime": "11:00",
+    "visibility": "Public",
+    "description": "Intro to orienteering and map skills with short courses through varied terrain — great for families and groups.",
+    "participantsMin": 4,
+    "participantsMax": 30,
+    "participants": [],
+    "cost": "Free",
+    "equipment": "Comfortable shoes",
+    "vibes": [
+      "Adventure",
+      "Family"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777638720000,
+    "createdAt": 1777638720000,
+    "host": "organiser01@example.org",
+    "organiserName": "Alex Smith"
+  },
+  {
+    "id": "evt_014",
+    "title": "Skills Night — Cricket Bowling Clinic",
+    "activity": "Cricket",
+    "location": "Sportsground Nets, Sportsground Rd, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.4965,
+      "lon": 151.6565
+    },
+    "date": "2026-05-19",
+    "startTime": "17:00",
+    "duration": 90,
+    "endTime": "18:30",
+    "visibility": "Public",
+    "description": "Bowling clinic focusing on line and length with drills and short simulated overs. Intermediate level.",
+    "participantsMin": 4,
+    "participantsMax": 12,
+    "participants": [],
+    "cost": "$5",
+    "equipment": "Bring kit",
+    "vibes": [
+      "Skills-focused"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777638780000,
+    "createdAt": 1777638780000,
+    "host": "organiser04@example.org",
+    "organiserName": "Morgan Patel"
+  },
+  {
+    "id": "evt_015",
+    "title": "Community Walk & Forage — Local Bushland",
+    "activity": "Foraging Walk",
+    "location": "Saumarez Falls Picnic Area, Saumarez Rd, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.586,
+      "lon": 151.661
+    },
+    "date": "2026-05-20",
+    "startTime": "08:30",
+    "duration": 90,
+    "endTime": "10:00",
+    "visibility": "Public",
+    "description": "Guided walk exploring edible plants and local ecology. Not a foraging permit — we discuss identification and sustainable practices.",
+    "participantsMin": 6,
+    "participantsMax": 20,
+    "participants": [],
+    "cost": "Free",
+    "equipment": "Notebook, water",
+    "vibes": [
+      "Educational",
+      "Outdoors"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777638840000,
+    "createdAt": 1777638840000,
+    "host": "organiser02@example.org",
+    "organiserName": "Taylor Nguyen"
+  },
+  {
+    "id": "evt_016",
+    "title": "Beginner Basketball — Community Court",
+    "activity": "Basketball",
+    "location": "Community Court, Queen St, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.504,
+      "lon": 151.658
+    },
+    "date": "2026-05-21",
+    "startTime": "18:00",
+    "duration": 75,
+    "endTime": "19:15",
+    "visibility": "Public",
+    "description": "Skills and mini-games aimed at players new to basketball — fun drills with partner rotation.",
+    "participantsMin": 4,
+    "participantsMax": 16,
+    "participants": [],
+    "cost": "Free",
+    "equipment": "Runners",
+    "vibes": [
+      "Beginner-friendly",
+      "Social"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777638900000,
+    "createdAt": 1777638900000,
+    "host": "organiser05@example.org",
+    "organiserName": "Casey Brown"
+  },
+  {
+    "id": "evt_017",
+    "title": "Photography Walk — Armidale CBD",
+    "activity": "Photography",
+    "location": "Armidale CBD, Beardy St, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.5038,
+      "lon": 151.661
+    },
     "date": "2026-05-22",
     "startTime": "16:00",
     "duration": 90,
     "endTime": "17:30",
     "visibility": "Public",
-    "description": "Focused nets practice for intermediate players — bowls, batting drills, and short simulated game scenarios to build technique.",
+    "description": "An easy walk focusing on composition and local architecture — bring any camera or phone and a curious eye.",
+    "participantsMin": 3,
+    "participantsMax": 20,
+    "participants": [],
+    "cost": "Free",
+    "equipment": "Camera (optional)",
+    "vibes": [
+      "Creative",
+      "Community"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777638960000,
+    "createdAt": 1777638960000,
+    "host": "organiser01@example.org",
+    "organiserName": "Alex Smith"
+  },
+  {
+    "id": "evt_018",
+    "title": "Mindful Walk & Breath — Armidale Lake",
+    "activity": "Mindfulness",
+    "location": "Armidale Lake (Lake Innes Reserve), Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.509,
+      "lon": 151.667
+    },
+    "date": "2026-05-23",
+    "startTime": "07:00",
+    "duration": 45,
+    "endTime": "07:45",
+    "visibility": "Public",
+    "description": "A short guided mindful walk, breathwork and a gentle stretch to set intentions for the day.",
+    "participantsMin": 2,
+    "participantsMax": 15,
+    "participants": [],
+    "cost": "Free",
+    "equipment": "Comfortable shoes",
+    "vibes": [
+      "Relaxed",
+      "Calm"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777639020000,
+    "createdAt": 1777639020000,
+    "host": "organiser03@example.org",
+    "organiserName": "Jordan Lee"
+  },
+  {
+    "id": "evt_019",
+    "title": "Community Games Afternoon — Youth Centre",
+    "activity": "Mixed Games",
+    "location": "Armidale Youth & Community Centre, 5 Youth Centre Rd, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.5005,
+      "lon": 151.657
+    },
+    "date": "2026-05-24",
+    "startTime": "14:00",
+    "duration": 180,
+    "endTime": "17:00",
+    "visibility": "Public",
+    "description": "Board games, casual sports and team challenges — a welcoming space for families and teens.",
     "participantsMin": 4,
+    "participantsMax": 50,
+    "participants": [],
+    "cost": "Free",
+    "equipment": "Bring a snack",
+    "vibes": [
+      "Family",
+      "Fun"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777639080000,
+    "createdAt": 1777639080000,
+    "host": "organiser02@example.org",
+    "organiserName": "Taylor Nguyen"
+  },
+  {
+    "id": "evt_020",
+    "title": "Sunrise Tai Chi — Armidale Gardens",
+    "activity": "Tai Chi",
+    "location": "Armidale Gardens, Gardens Ave, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.506,
+      "lon": 151.656
+    },
+    "date": "2026-05-25",
+    "startTime": "06:30",
+    "duration": 45,
+    "endTime": "07:15",
+    "visibility": "Public",
+    "description": "Gentle tai chi practice focusing on balance and breath — suitable for all ages and levels.",
+    "participantsMin": 2,
+    "participantsMax": 20,
+    "participants": [],
+    "cost": "Free",
+    "equipment": "Comfortable clothing",
+    "vibes": [
+      "Calm",
+      "Beginner-friendly"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777639140000,
+    "createdAt": 1777639140000,
+    "host": "organiser05@example.org",
+    "organiserName": "Casey Brown"
+  },
+  {
+    "id": "evt_021",
+    "title": "UNE Campus Circuit Walk",
+    "activity": "Walking",
+    "location": "University of New England, Armidale NSW 2351",
+    "locationCoords": {
+      "lat": -30.4899,
+      "lon": 151.6418
+    },
+    "date": "2026-05-08",
+    "startTime": "07:15",
+    "duration": 40,
+    "endTime": "07:55",
+    "visibility": "Public",
+    "description": "A relaxed morning campus loop before classes. Expect a conversational pace, easy introductions and a short coffee stop after if people are keen.",
+    "participantsMin": 2,
+    "participantsMax": 16,
+    "participants": [
+      "participant01@example.org",
+      "participant04@example.org"
+    ],
+    "applications": [
+      {
+        "userId": "participant04@example.org",
+        "status": "approved",
+        "message": "I am new to group walks but keen to join.",
+        "username": "firsttimeriley",
+        "preferredName": "Riley",
+        "preferredNameVisibleToParticipants": true,
+        "skillLevel": "Beginner",
+        "appliedAt": 1777639200000
+      },
+      {
+        "userId": "participant02@example.org",
+        "status": "pending",
+        "message": "Would love to join if there is still room.",
+        "username": "sunrisepedal",
+        "preferredName": "Jordan",
+        "preferredNameVisibleToParticipants": false,
+        "skillLevel": "Intermediate",
+        "appliedAt": 1777639260000
+      }
+    ],
+    "cost": "Free",
+    "equipment": "Walking shoes, water bottle",
+    "vibes": [
+      "Casual",
+      "Social"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777639320000,
+    "createdAt": 1777639200000,
+    "host": "username@une.edu.au",
+    "organiserName": "username"
+  },
+  {
+    "id": "evt_022",
+    "title": "Twilight Half-Court Basketball — UNE Sports Courts",
+    "activity": "Basketball",
+    "location": "UNE Sports Courts, University of New England, Armidale NSW 2351",
+    "locationCoords": {
+      "lat": -30.4915,
+      "lon": 151.6397
+    },
+    "date": "2026-05-11",
+    "startTime": "17:45",
+    "duration": 75,
+    "endTime": "19:00",
+    "visibility": "Public",
+    "description": "Friendly half-court games with plenty of breaks. Great if you want a social hit-out without committing to a full-length match.",
+    "participantsMin": 4,
+    "participantsMax": 14,
+    "participants": [
+      "participant05@example.org"
+    ],
+    "cost": "Free",
+    "equipment": "Runners, drink bottle",
+    "vibes": [
+      "Social",
+      "Casual"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777639380000,
+    "createdAt": 1777639380000,
+    "host": "username@une.edu.au",
+    "organiserName": "username"
+  },
+  {
+    "id": "evt_023",
+    "title": "Sunday Pathway Ride — Bellevue Loop",
+    "activity": "Cycling",
+    "location": "Bellevue Pathway, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.5151,
+      "lon": 151.6734
+    },
+    "date": "2026-05-16",
+    "startTime": "08:00",
+    "duration": 90,
+    "endTime": "09:30",
+    "visibility": "Public",
+    "description": "Cruisy Sunday ride on paved pathways with regroup points built in. Perfect for getting moving without needing a racing pace.",
+    "participantsMin": 3,
     "participantsMax": 12,
     "participants": [],
-    "cost": "Donation",
-    "equipment": "Bring bat",
-    "vibes": ["Skills-focused"],
-    "photoDataUrl": null,
-    "updatedAt": 1777544053541,
-    "createdAt": 1777544053541,
-    "host": "organiser04@example.org",
-    "organiserName": "Organizer 4"
-  },
-  {
-    "id": "evt_005",
-    "title": "Table Tennis Social - Armidale",
-    "activity": "Table Tennis",
-    "location": "Central Park Sportsground, Armidale, NSW",
-    "locationCoords": { "lat": -30.505, "lon": 151.662 },
-    "date": "2026-05-25",
-    "startTime": "11:00",
-    "duration": 60,
-    "endTime": "12:00",
-    "visibility": "Public",
-    "description": "Casual table tennis social with lightweight rotation and friendly matches. All ages welcome; casual coaching available.",
-    "participantsMin": 2,
-    "participantsMax": 8,
-    "participants": ["participant05@example.org"],
     "cost": "Free",
-    "equipment": "Provided",
-    "vibes": ["Family"],
+    "equipment": "Roadworthy bike, helmet",
+    "vibes": [
+      "Outdoors",
+      "Casual"
+    ],
     "photoDataUrl": null,
-    "updatedAt": 1777544053542,
-    "createdAt": 1777544053542,
-    "host": "organiser05@example.org",
-    "organiserName": "Organizer 5"
+    "updatedAt": 1777639440000,
+    "createdAt": 1777639440000,
+    "host": "username@une.edu.au",
+    "organiserName": "username"
   },
   {
-    "id": "evt_006",
-    "title": "Park Pilates - Canberra",
-    "activity": "Park Pilates",
-    "location": "Westside Recreation Grounds, Canberra, ACT",
-    "locationCoords": { "lat": -35.285, "lon": 149.11 },
-    "date": "2026-06-02",
-    "startTime": "08:30",
-    "duration": 45,
-    "endTime": "09:15",
+    "id": "evt_024",
+    "title": "Approved Walk Spot — Dangar Street Loop",
+    "activity": "Walking",
+    "location": "Dangar Street Plaza, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.5112,
+      "lon": 151.6664
+    },
+    "date": "2026-05-18",
+    "startTime": "07:10",
+    "duration": 50,
+    "endTime": "08:00",
     "visibility": "Public",
-    "description": "A short, energising pilates session outdoors designed to build core strength and mobility — bring a mat and water.",
-    "participantsMin": 3,
-    "participantsMax": 18,
-    "participants": [],
-    "cost": "$5",
-    "equipment": "Bring water bottle",
-    "vibes": ["Beginner-friendly"],
-    "photoDataUrl": null,
-    "updatedAt": 1777544053543,
-    "createdAt": 1777544053543,
-    "host": "organiser03@example.org",
-    "organiserName": "Organizer 3"
-  },
-  {
-    "id": "evt_007",
-    "title": "Group Ride - Perth",
-    "activity": "Group Ride",
-    "location": "Fremantle Oval, Perth, WA",
-    "locationCoords": { "lat": -32.056, "lon": 115.746 },
-    "date": "2026-06-06",
-    "startTime": "15:30",
-    "duration": 60,
-    "endTime": "16:30",
-    "visibility": "Public",
-    "description": "An easy-paced community group ride along coastal routes. Helmets required; we regroup at scenic stops and ride safely together.",
+    "description": "Seeded participation example where the username account is already approved and visible in the participants tab.",
     "participantsMin": 2,
     "participantsMax": 10,
-    "participants": [],
-    "cost": "Donation",
-    "equipment": "Bring helmet",
-    "vibes": ["Outdoors"],
-    "photoDataUrl": null,
-    "updatedAt": 1777544053544,
-    "createdAt": 1777544053544,
-    "host": "organiser02@example.org",
-    "organiserName": "Organizer 2"
-  },
-  {
-    "id": "evt_008",
-    "title": "Community Swim - Armidale",
-    "activity": "Community Swim",
-    "location": "Riverwalk Pavilion, Armidale, NSW",
-    "locationCoords": { "lat": -30.498, "lon": 151.669 },
-    "date": "2026-06-10",
-    "startTime": "09:00",
-    "duration": 60,
-    "endTime": "10:00",
-    "visibility": "Public",
-    "description": "A relaxed community swim focusing on technique and steady laps in a friendly setting. Suitable for confident swimmers and families.",
-    "participantsMin": 4,
-    "participantsMax": 15,
-    "participants": [],
+    "participants": [
+      "username@une.edu.au",
+      "participant01@example.org"
+    ],
+    "participantDetails": [
+      {
+        "userId": "username@une.edu.au",
+        "username": "username",
+        "preferredName": "Jamie",
+        "preferredNameVisibleToParticipants": false,
+        "joinedAt": 1777639500000
+      },
+      {
+        "userId": "participant01@example.org",
+        "username": "weekendcheer",
+        "preferredName": "Sam",
+        "preferredNameVisibleToParticipants": true,
+        "joinedAt": 1777639445000
+      }
+    ],
     "cost": "Free",
-    "equipment": "Bring towel",
-    "vibes": ["Family"],
+    "equipment": "Walking shoes",
+    "vibes": [
+      "Casual",
+      "Social"
+    ],
     "photoDataUrl": null,
-    "updatedAt": 1777544053545,
-    "createdAt": 1777544053545,
+    "updatedAt": 1777639500000,
+    "createdAt": 1777639500000,
     "host": "organiser05@example.org",
-    "organiserName": "Organizer 5"
+    "organiserName": "communityspin"
   },
   {
-    "id": "evt_009",
-    "title": "Indoor Rock Climb - Perth",
-    "activity": "Indoor Rock Climb",
-    "location": "Kings Park Meeting Point, Perth, WA",
-    "locationCoords": { "lat": -31.962, "lon": 115.842 },
-    "date": "2026-06-15",
-    "startTime": "18:00",
-    "duration": 90,
-    "endTime": "19:30",
-    "visibility": "Public",
-    "description": "Indoor climbing session with routes for varying skill levels and emphasis on technique — bring climbing shoes or rent on-site.",
-    "participantsMin": 3,
-    "participantsMax": 12,
-    "participants": [],
-    "cost": "$10",
-    "equipment": "Bring shoes",
-    "vibes": ["Skills-focused"],
-    "photoDataUrl": null,
-    "updatedAt": 1777544053546,
-    "createdAt": 1777544053546,
-    "host": "organiser04@example.org",
-    "organiserName": "Organizer 4"
-  },
-  {
-    "id": "evt_010",
-    "title": "Trail Run - Canberra",
-    "activity": "Trail Run",
-    "location": "Gungahlin Park, Canberra, ACT",
-    "locationCoords": { "lat": -35.226, "lon": 149.115 },
-    "date": "2026-06-20",
-    "startTime": "07:30",
+    "id": "evt_025",
+    "title": "Pending Badminton Rotation — UNE Hall",
+    "activity": "Badminton",
+    "location": "UNE Sports Hall, University of New England, Armidale NSW 2351",
+    "locationCoords": {
+      "lat": -30.4928,
+      "lon": 151.6409
+    },
+    "date": "2026-05-19",
+    "startTime": "18:15",
     "duration": 60,
-    "endTime": "08:30",
+    "endTime": "19:15",
     "visibility": "Public",
-    "description": "A social trail run through mixed terrain; paced groups allow both steady joggers and faster runners to enjoy the route.",
-    "participantsMin": 5,
-    "participantsMax": 15,
-    "participants": ["participant01@example.org","participant02@example.org","participant03@example.org","participant04@example.org","participant05@example.org"],
-    "cost": "$5",
-    "equipment": "Bring water",
-    "vibes": ["Competitive"],
+    "description": "Seeded pending example so the username account has an application awaiting host review.",
+    "participantsMin": 2,
+    "participantsMax": 8,
+    "participants": [
+      "participant04@example.org"
+    ],
+    "applications": [
+      {
+        "userId": "username@une.edu.au",
+        "status": "pending",
+        "message": "Happy to fill in if there is still room.",
+        "username": "username",
+        "preferredName": "Jamie",
+        "preferredNameVisibleToParticipants": false,
+        "skillLevel": "Beginner",
+        "appliedAt": 1777639560000
+      }
+    ],
+    "cost": "Free",
+    "equipment": "Racket if you have one",
+    "vibes": [
+      "Social",
+      "Beginner-friendly"
+    ],
     "photoDataUrl": null,
-    "updatedAt": 1777544053547,
-    "createdAt": 1777544053547,
-    "host": "organiser01@example.org",
-    "organiserName": "Organizer 1"
+    "updatedAt": 1777639560000,
+    "createdAt": 1777639560000,
+    "host": "organiser04@example.org",
+    "organiserName": "climbcoach"
+  },
+  {
+    "id": "evt_026",
+    "title": "Full Intro Ride — Creek Path Circuit",
+    "activity": "Cycling",
+    "location": "Creek Path Circuit Start, Armidale NSW 2350",
+    "locationCoords": {
+      "lat": -30.5089,
+      "lon": 151.6698
+    },
+    "date": "2026-05-20",
+    "startTime": "07:30",
+    "duration": 75,
+    "endTime": "08:45",
+    "visibility": "Public",
+    "description": "Seeded waitlist example where all participant spots are already full and the username account is on the waitlist.",
+    "participantsMin": 2,
+    "participantsMax": 2,
+    "participants": [
+      "participant02@example.org",
+      "participant03@example.org"
+    ],
+    "participantDetails": [
+      {
+        "userId": "participant02@example.org",
+        "username": "sunrisepedal",
+        "preferredName": "Jordan",
+        "preferredNameVisibleToParticipants": false,
+        "joinedAt": 1777639600000
+      },
+      {
+        "userId": "participant03@example.org",
+        "username": "pbchaser",
+        "preferredName": "Taylor",
+        "preferredNameVisibleToParticipants": false,
+        "joinedAt": 1777639605000
+      }
+    ],
+    "applications": [
+      {
+        "userId": "username@une.edu.au",
+        "status": "waitlisted",
+        "message": "Please keep me in mind if somebody drops out.",
+        "username": "username",
+        "preferredName": "Jamie",
+        "preferredNameVisibleToParticipants": false,
+        "skillLevel": "Intermediate",
+        "appliedAt": 1777639620000
+      }
+    ],
+    "cost": "Free",
+    "equipment": "Bike and helmet",
+    "vibes": [
+      "Outdoors",
+      "Casual"
+    ],
+    "photoDataUrl": null,
+    "updatedAt": 1777639620000,
+    "createdAt": 1777639620000,
+    "host": "organiser02@example.org",
+    "organiserName": "kickabout"
   }
 ]

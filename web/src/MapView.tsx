@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
-import { getProfile } from './AuthService'
+import { getProfile, getLoggedInUser, getPublicIdentityLabel } from './AuthService'
 // Leaflet CSS is required for markers, popups and controls to render correctly
 import 'leaflet/dist/leaflet.css'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
@@ -93,31 +93,28 @@ export default function MapView({ zoom = 13 }: Props) {
       const title = e.title || e.activity || 'Event'
       const loc = e.location || ''
       const dt = (e.date ? `${e.date}` : '') + (e.startTime ? ` ${e.startTime}` : '')
-      // Prefer explicit organiser display name. Do NOT publicize email/phone on the event popup.
-      let host = e.organiserName || ''
-      // If organiserName missing, try to resolve displayName from the host id (email) stored in event.host
-      if (!host && e.host && typeof e.host === 'string') {
+      // Prefer explicit organiser display name from the profile. Do NOT publicize email/phone on the event popup.
+      let host = ''
+      let rating = ''
+      if (e.host && typeof e.host === 'string') {
         try {
           const prof = getProfile(e.host)
-          if (prof && (prof as any).displayName) host = (prof as any).displayName
-        } catch (err) {
-          // ignore
-        }
+          if (prof) host = getPublicIdentityLabel(e.host, prof)
+          if (prof && typeof (prof as any).rating === 'number') rating = ` (${(prof as any).rating}★)`
+        } catch (err) { /* ignore */ }
       }
+      // If profile lookup failed, fall back to any organiserName stored on the event
+      if (!host && e.organiserName) host = e.organiserName
       // If still missing and host doesn't look like an email, use it as a fallback plain string
       const fallbackHost = (!host && e.host && typeof e.host === 'string' && !e.host.includes('@')) ? e.host : ''
       const parts = []
-      parts.push(`<div style="font-weight:700;margin-bottom:6px">${escapeHtml(title)}</div>`)
-      parts.push(`<div style="font-size:13px;color:#374151">${escapeHtml(loc)}</div>`)
-      if (dt) parts.push(`<div style="font-size:12px;color:#6b7280;margin-top:6px">${escapeHtml(dt)}</div>`)
-      if (e.suggestedExperience) parts.push(`<div style="font-size:12px;color:#6b7280">Experience: ${escapeHtml(e.suggestedExperience)}</div>`)
-      if (e.cost) parts.push(`<div style="font-size:12px;color:#6b7280">Cost: ${escapeHtml(e.cost)}</div>`)
-      if (e.vibes && Array.isArray(e.vibes) && e.vibes.length) parts.push(`<div style="margin-top:6px">Vibes: ${escapeHtml(e.vibes.join(', '))}</div>`)
+      parts.push(`<div class="map-popup-card" style="padding:4px;min-width:180px">`)
+      parts.push(`<div style="font-weight:700;font-size:15px;margin-bottom:6px">${escapeHtml(title)}</div>`)
+      if (dt) parts.push(`<div style="font-size:12px;color:#6b7280;margin-bottom:4px">${escapeHtml(dt)}</div>`)
       const hostToShow = host || fallbackHost
-      if (hostToShow) parts.push(`<div style="margin-top:8px;font-size:13px">Organiser: ${escapeHtml(hostToShow)}</div>`)
-      if (e.description) parts.push(`<div style="margin-top:8px;font-size:13px;color:#374151">${escapeHtml(e.description)}</div>`)
-      // action link placeholder
-      parts.push(`<div style="margin-top:8px"><a href=\"#\" data-event-id=\"${escapeHtml(e.id)}\" class=\"map-join-link\">View / Join</a></div>`)
+      if (hostToShow) parts.push(`<div style="margin-top:8px;font-size:13px">Host: <strong>${escapeHtml(hostToShow)}${escapeHtml(rating)}</strong></div>`)
+      parts.push(`<div style="margin-top:12px;display:flex;justify-content:flex-end"><button data-event-id=\"${escapeHtml(e.id)}\" class=\"btn map-join-link\">View / Join</button></div>`)
+      parts.push(`</div>`)
       return parts.join('\n')
     }
 
@@ -189,13 +186,19 @@ export default function MapView({ zoom = 13 }: Props) {
           const lat = item.locationCoords.lat
           const lon = item.locationCoords.lon
           const map = mapRef.current
-          if (map) {
-            try { map.flyTo([lat, lon], 15, { animate: true }) } catch { try { map.setView([lat, lon], 15) } catch {} }
-          }
-          // try open popup for the created event if marker added
-          const found = markers.find((m: any) => m && m.__demoEventId === item.id)
-          if (found && (found as any).openPopup) {
-            ;(found as any).openPopup()
+          // Only focus the map and open the popup automatically when the
+          // logged-in user is the host/creator of the event. Other users
+          // should not have the map jump to pins created by others.
+          try {
+            const current = getLoggedInUser()
+            if (map && item.host && current && String(item.host) === String(current)) {
+              try { map.flyTo([lat, lon], 15, { animate: true }) } catch { try { map.setView([lat, lon], 15) } catch {} }
+              // try open popup for the created event if marker added
+              const found = markers.find((m: any) => m && m.__demoEventId === item.id)
+              if (found && (found as any).openPopup) (found as any).openPopup()
+            }
+          } catch (e) {
+            // ignore focus errors
           }
         }
       } catch (e) {

@@ -1,5 +1,5 @@
 import React from 'react'
-import { getProfile, getLoggedInUser, listEvents } from './AuthService'
+import { getProfile, getLoggedInUser, listEvents, getPublicIdentityLabel, getPreferredName } from './AuthService'
 
 type Props = {
   open: boolean
@@ -12,22 +12,17 @@ type ReadProps = Props & {
   onEditAbout?: () => void
   onEditGender?: () => void
   onEditVibes?: () => void
+  onEditIdentity?: () => void
 }
 
-export default function ReadProfileModal({ open, onClose, userId, onEditInterests, onEditAbout, onEditGender, onEditVibes }: ReadProps) {
+export default function ReadProfileModal({ open, onClose, userId, onEditInterests, onEditAbout, onEditGender, onEditVibes, onEditIdentity }: ReadProps) {
   if (!open) return null
   const profile = getProfile(userId)
   const viewer = getLoggedInUser()
   // no toggle: always show both participant and organiser stats separated by a divider
 
-  const safeDisplay = (id: string | undefined, prof: any) => {
-    if (prof && prof.displayName) return prof.displayName
-    // if the viewer is the same user, show the raw id (owner can see their own email)
-    if (viewer === id) return id || ''
-    // do not reveal emails to other users
-    if (id && id.includes('@')) return 'User'
-    return id || ''
-  }
+  const publicLabel = getPublicIdentityLabel(userId, profile || undefined)
+  const preferredName = getPreferredName(userId, profile || undefined)
   if (!profile) {
     return (
       <div className="modal-overlay" role="dialog" aria-modal="true">
@@ -80,12 +75,15 @@ export default function ReadProfileModal({ open, onClose, userId, onEditInterest
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <div style={{ fontWeight: 800, fontSize: 16 }}>{safeDisplay(userId, profile)}</div>
+                  <div style={{ fontWeight: 800, fontSize: 16 }}>{publicLabel}</div>
+                  {viewer === userId && preferredName !== publicLabel && (
+                    <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Preferred name: {preferredName}</div>
+                  )}
                   <div style={{ fontSize: 13, color: '#6b7280', marginTop: 6 }}>{profile.about || <em>No bio provided</em>}</div>
                 </div>
                 <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
                   {/* avatar moved to top-right */}
-                  <div style={{ width: 64, height: 64, borderRadius: 999, background: '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 20 }}>{(safeDisplay(userId, profile) || '').charAt(0).toUpperCase()}</div>
+                  <div style={{ width: 64, height: 64, borderRadius: 999, background: '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 20 }}>{(publicLabel || '').charAt(0).toUpperCase()}</div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     {viewer !== userId ? (
                       <>
@@ -93,7 +91,10 @@ export default function ReadProfileModal({ open, onClose, userId, onEditInterest
                         <button className="btn ghost" onClick={() => window.dispatchEvent(new CustomEvent('demo1_message_user', { detail: { userId } }))}>Message</button>
                       </>
                     ) : (
-                      <button aria-label="Edit profile" title="Edit profile" className="link-button" onClick={() => { setTimeout(() => onEditAbout && onEditAbout(), 0); setTimeout(() => onClose(), 0) }}>✎</button>
+                      <>
+                        <button aria-label="Edit identity" title="Edit identity" className="link-button" onClick={() => { setTimeout(() => onEditIdentity && onEditIdentity(), 0); setTimeout(() => onClose(), 0) }}>👤</button>
+                        <button aria-label="Edit profile" title="Edit profile" className="link-button" onClick={() => { setTimeout(() => onEditAbout && onEditAbout(), 0); setTimeout(() => onClose(), 0) }}>✎</button>
+                      </>
                     )}
                   </div>
                 </div>

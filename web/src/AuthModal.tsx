@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { accountExists, registerAccount, setLoggedInUser, readRegistrationDraft, writeRegistrationDraft, clearRegistrationDraft } from './AuthService'
+import { accountExists, registerAccount, setLoggedInUser, readRegistrationDraft, writeRegistrationDraft, clearRegistrationDraft, normalizeAccountId, saveProfile } from './AuthService'
 
 type Props = {
   open: boolean
@@ -15,9 +15,9 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
   const [mode, setMode] = useState<'login' | 'register'>('login')
 
   // registration fields (page 1)
-  const [displayName, setDisplayName] = useState('')
+  const [username, setUsername] = useState('')
+  const [preferredName, setPreferredName] = useState('')
   const [yearOfBirth, setYearOfBirth] = useState('')
-  const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
   const [registered, setRegistered] = useState(false)
@@ -35,9 +35,9 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
 
   const handleLogin = () => {
     setError(null)
-    const normalized = id.trim()
+    const normalized = normalizeAccountId(id.trim())
     if (!normalized) {
-      setError('Enter email or phone')
+      setError('Enter your UNE username, email or phone')
       return
     }
     // Prototype: allow very loose auth. If account exists, log in regardless of password.
@@ -83,15 +83,23 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
   const handleRegister = () => {
     setError(null)
 
-    const name = displayName.trim()
+    const enteredUsername = username.trim().toLowerCase()
+    const name = preferredName.trim()
     const yob = yearOfBirth.trim()
-    const e = email.trim()
     const ph = phone.trim()
     const pw = password
-    const pwc = passwordConfirm
+    const identifier = normalizeAccountId(enteredUsername)
 
+    if (!enteredUsername) {
+      setError('Enter a username')
+      return
+    }
+    if (!/^[a-z0-9._-]{3,}$/.test(enteredUsername)) {
+      setError('Username must be at least 3 characters and use only letters, numbers, dots, underscores or hyphens')
+      return
+    }
     if (!name) {
-      setError('Enter display name')
+      setError('Enter preferred name')
       return
     }
     const yearNum = yob ? parseInt(yob, 10) : NaN
@@ -100,23 +108,26 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
       setError('Enter a valid year of birth')
       return
     }
-    if (!e && !ph) {
-      setError('Enter email or phone')
-      return
-    }
-    if (e && !isValidEmail(e)) {
-      setError('Enter a valid email address')
-      return
-    }
     if (ph && !isValidPhone(ph)) {
       setError('Enter a valid phone number')
       return
     }
     // Prototype: do not enforce password complexity. Passwords are optional/loose.
 
-    // choose identifier: email if provided, otherwise phone
-    const identifier = e || ph
     registerAccount(identifier)
+    saveProfile({
+      id: identifier,
+      username: enteredUsername,
+      preferredName: name,
+      yearOfBirth: yob || undefined,
+      phone: ph || undefined,
+      password: pw || undefined,
+      tags: [],
+      aboutPublic: true,
+      sharePreferredNameWithParticipants: false,
+      skillChecks: {},
+      vibes: [],
+    })
 
     // Prototype: local registration only (no backend).
 
@@ -125,9 +136,9 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
     setRegisteredName(name)
     setRegisteredIdentifier(identifier)
     // clear registration fields
-    setDisplayName('')
+    setUsername('')
+    setPreferredName('')
     setYearOfBirth('')
-    setEmail('')
     setPhone('')
     setPassword('')
     setPasswordConfirm('')
@@ -152,15 +163,6 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
     }, 2500)
   }
 
-  // seed email when entering registration mode if no email present
-  useEffect(() => {
-    if (mode === 'register') {
-      if (!email || email.trim() === '') {
-        setEmail('username@une.edu.au')
-      }
-    }
-  }, [mode])
-
   // allow parent to open modal in a specific mode
   useEffect(() => {
     if (!open) return
@@ -171,7 +173,7 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
   const handleForgot = () => {
     // Prototype: no mail sent, just show a message
     if (!id.trim()) {
-      setError('Enter your email/phone to reset')
+      setError('Enter your username, email or phone to reset')
       return
     }
     setError('Password reset link (prototype) sent to ' + id.trim())
@@ -192,9 +194,11 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
     try {
       const draft = readRegistrationDraft()
       if (draft) {
-        if (draft.displayName) setDisplayName(draft.displayName)
+        if (draft.username) setUsername(draft.username)
+        else if ((draft as any).email) setUsername(String((draft as any).email).split('@')[0])
+        if (draft.preferredName) setPreferredName(draft.preferredName)
+        else if (draft.displayName) setPreferredName(draft.displayName)
         if (draft.yearOfBirth) setYearOfBirth(draft.yearOfBirth)
-        if (draft.email) setEmail(draft.email)
         if (draft.phone) setPhone(draft.phone)
       }
     } catch (e) {
@@ -205,11 +209,11 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
   // persist registration draft whenever registration fields change
   useEffect(() => {
     try {
-      writeRegistrationDraft({ displayName, yearOfBirth, email, phone })
+      writeRegistrationDraft({ username, preferredName, yearOfBirth, phone })
     } catch (e) {
       // ignore
     }
-  }, [displayName, yearOfBirth, email, phone])
+  }, [username, preferredName, yearOfBirth, phone])
 
   if (!open) return null
 
@@ -224,7 +228,7 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
         <div className="modal-body">
           {mode === 'login' ? (
             <>
-              <label className="input-label">Email or Phone</label>
+              <label className="input-label">UNE username, email or phone</label>
               <input className="input" value={id} onChange={e => setId(e.target.value)} />
 
               <label className="input-label">Password</label>
@@ -264,16 +268,20 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
                 </div>
               ) : (
                 <>
-                  <label className="input-label">Display name</label>
-                  <input className="input" value={displayName} onChange={e => setDisplayName(e.target.value)} />
+                  <label className="input-label">Username</label>
+                  <input className="input" value={username} onChange={e => setUsername(e.target.value)} placeholder="e.g. username" />
+
+                  <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
+                    Your account will use <strong>{username.trim() ? normalizeAccountId(username) : 'username@une.edu.au'}</strong>
+                  </div>
+
+                  <label className="input-label">Preferred name</label>
+                  <input className="input" value={preferredName} onChange={e => setPreferredName(e.target.value)} placeholder="What hosts can call you" />
 
                   <label className="input-label">Year of birth</label>
                   <input className="input" value={yearOfBirth} onChange={e => setYearOfBirth(e.target.value)} placeholder="e.g. 1990" />
 
-                  <label className="input-label">Email</label>
-                  <input className="input" value={email} onChange={e => setEmail(e.target.value)} />
-
-                  <label className="input-label">Phone</label>
+                  <label className="input-label">Phone (optional)</label>
                   <input className="input" value={phone} onChange={e => setPhone(e.target.value)} />
 
                   <label className="input-label">Password</label>
@@ -290,7 +298,7 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
                   </div>
 
                   <div style={{ marginTop: 12, fontSize: 12 }}>
-                    Password is optional for this prototype. Any value will be accepted.
+                    Password is optional for this prototype. Public identity uses your username; hosts can see your preferred name when you apply.
                   </div>
 
                   <div style={{ marginTop: 10, fontSize: 12 }}>

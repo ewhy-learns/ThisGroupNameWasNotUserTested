@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import Switch from './Switch'
-import { getSuggestedTags, saveProfile, suggestTag, getProfile } from './AuthService'
+import { getSuggestedTags, saveProfile, suggestTag, getProfile, getPublicUsername, getPreferredName } from './AuthService'
 
 type Props = {
   open: boolean
@@ -109,9 +109,10 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
   const [aboutPublic, setAboutPublic] = useState<boolean>(true)
   const [gender, setGender] = useState<string>('Prefer not to say')
   // contact details (editable in profile but not publicized on events)
-  const [displayName, setDisplayName] = useState<string>('')
+  const [preferredName, setPreferredName] = useState<string>('')
   const [contactEmail, setContactEmail] = useState<string>('')
   const [contactPhone, setContactPhone] = useState<string>('')
+  const [sharePreferredNameWithParticipants, setSharePreferredNameWithParticipants] = useState<boolean>(false)
   // password change fields
   const [currentPassword, setCurrentPassword] = useState<string>('')
   const [newPassword, setNewPassword] = useState<string>('')
@@ -129,6 +130,26 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
   // vibes state
   const [displayedVibes, setDisplayedVibes] = useState<string[]>(() => sample(VIBES_TAGS, 10))
   const [selectedVibes, setSelectedVibes] = useState<string[]>([])
+
+  const buildProfile = (overrides?: Record<string, any>) => {
+    const existing = getProfile(userId)
+    return {
+      ...(existing || { id: userId, tags: [] }),
+      id: userId,
+      username: existing?.username || getPublicUsername(userId, existing),
+      preferredName: (preferredName || existing?.preferredName || getPreferredName(userId, existing)) || undefined,
+      tags: selected,
+      vibes: selectedVibes,
+      about,
+      aboutPublic,
+      gender,
+      email: contactEmail || existing?.email || undefined,
+      phone: contactPhone || existing?.phone || undefined,
+      sharePreferredNameWithParticipants,
+      completedAt: existing?.completedAt,
+      ...overrides,
+    }
+  }
 
   // Ensure displayedTags always contains up to 10 items matching current filter and excluding selected
   function fillDisplayedTags(current: string[], selectedSet: Set<string>, mode?: 'both'|'sports'|'no-sports') {
@@ -161,9 +182,10 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
         setAbout(profile.about ?? '')
         setAboutPublic(profile.aboutPublic === undefined ? true : !!profile.aboutPublic)
         setGender(profile.gender ?? 'Prefer not to say')
-        setDisplayName(profile.displayName ?? '')
+        setPreferredName(profile.preferredName ?? profile.displayName ?? getPreferredName(userId, profile))
         setContactEmail(profile.email ?? '')
         setContactPhone(profile.phone ?? '')
+        setSharePreferredNameWithParticipants(!!profile.sharePreferredNameWithParticipants)
         // refresh displayed tags to exclude already-selected, and ensure 10 items
         setDisplayedTags(() => fillDisplayedTags([], new Set(profile.tags ?? []), filterMode))
         // load vibes if present
@@ -181,9 +203,10 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
         setAbout('')
         setAboutPublic(true)
           setGender('Prefer not to say')
-          setDisplayName('')
+          setPreferredName('')
           setContactEmail('')
           setContactPhone('')
+          setSharePreferredNameWithParticipants(false)
           // if this is a required onboarding flow, start at step 1 and prevent skipping
           if (requiredFlow) setStep(1)
       }
@@ -223,7 +246,7 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
           const setTags = new Set<string>(existing)
           if (selecting) setTags.add(tag)
           else setTags.delete(tag)
-          saveProfile({ id: userId, tags: Array.from(setTags), vibes: selectedVibes, about, aboutPublic, gender, completedAt: Date.now() })
+          saveProfile(buildProfile({ tags: Array.from(setTags) }))
         }
       } catch (e) {
         console.warn('[ProfileModal] persist selected tag failed', e)
@@ -249,7 +272,7 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
         const existing = profile?.tags ?? []
         const setTags = new Set<string>(existing)
         setTags.add(value)
-        saveProfile({ id: userId, tags: Array.from(setTags), about, aboutPublic, gender, completedAt: Date.now() })
+        saveProfile(buildProfile({ tags: Array.from(setTags) }))
       }
     } catch (e) {
       console.warn('[ProfileModal] persist suggested tag failed', e)
@@ -299,7 +322,7 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
       try {
         if (userId) {
           const profile = getProfile(userId)
-          const p = { id: userId, tags: profile?.tags ?? [], vibes: next, about: profile?.about ?? '', aboutPublic: profile?.aboutPublic ?? true, gender: profile?.gender ?? 'Prefer not to say', completedAt: Date.now() }
+          const p = buildProfile({ tags: profile?.tags ?? selected, vibes: next })
           saveProfile(p)
         }
       } catch (e) {
@@ -311,7 +334,7 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
 
   const handleSave = () => {
     // save profile (simple) including vibes
-    const profile = { id: userId, tags: selected, vibes: selectedVibes, about, aboutPublic, gender, completedAt: Date.now(), displayName: displayName || undefined, email: contactEmail || undefined, phone: contactPhone || undefined }
+    const profile = buildProfile({ email: contactEmail || undefined, phone: contactPhone || undefined, completedAt: Date.now() })
     saveProfile(profile)
     setToast('Profile saved')
     setTimeout(() => setToast(null), 1800)
@@ -341,7 +364,7 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
         return
       }
       ;(profile as any).password = newPassword
-      saveProfile(profile)
+      saveProfile({ ...profile, username: profile.username || getPublicUsername(userId, profile), preferredName: profile.preferredName || preferredName || getPreferredName(userId, profile), sharePreferredNameWithParticipants })
       setToast('Password changed')
       setTimeout(() => setToast(null), 1600)
       setCurrentPassword('')
@@ -571,7 +594,7 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
                     </>
                   ) : (
                     <>
-                      <button type="button" className="btn" onClick={() => { if (isStepValid(4)) handleSave() }} disabled={!isStepValid(4)}>Save</button>
+                        <button type="button" className="btn" onClick={() => setStep(5)} disabled={!isStepValid(4)}>Next</button>
                       <button type="button" className="btn ghost" onClick={() => setStep(3)}>Back</button>
                     </>
                   )}
@@ -580,10 +603,20 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
                 ) : step === 5 ? (
                   // Step 5: Contact details
                   <>
-                    <p style={{ marginTop: 0 }}>Add a display name and contact details. Email and phone will not be publicized on event popups.</p>
+                    <p style={{ marginTop: 0 }}>Your username is your public identity across the app. Preferred name is shown to hosts when you apply, and you can choose whether approved participants can also see it.</p>
 
-                    <label className="input-label">Display name</label>
-                    <input className="input" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="How you want to be shown (e.g. Alex)" />
+                    <label className="input-label">Username</label>
+                    <input className="input" value={getPublicUsername(userId)} readOnly aria-readonly="true" />
+
+                    <label className="input-label">Preferred name</label>
+                    <input className="input" value={preferredName} onChange={e => setPreferredName(e.target.value)} placeholder="What hosts can call you (e.g. Alex)" />
+
+                    <div style={{ marginTop: 8 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Switch checked={sharePreferredNameWithParticipants} onChange={v => setSharePreferredNameWithParticipants(v)} />
+                        <span>Allow approved group participants to see my preferred name</span>
+                      </label>
+                    </div>
 
                     <label className="input-label" style={{ marginTop: 8 }}>Email (private)</label>
                     <input className="input" value={contactEmail} onChange={e => setContactEmail(e.target.value)} placeholder="you@example.org" />
@@ -599,7 +632,7 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
                         </>
                       ) : (
                         <>
-                          <button type="button" className="btn" onClick={() => { if (isStepValid(5)) handleSave(); setStep(6) }} disabled={!isStepValid(5)}>Next</button>
+                          <button type="button" className="btn" onClick={() => { if (isStepValid(5)) { saveProfile(buildProfile({ email: contactEmail || undefined, phone: contactPhone || undefined })) ; setStep(6) } }} disabled={!isStepValid(5)}>Next</button>
                           <button type="button" className="btn ghost" onClick={() => setStep(4)}>Back</button>
                         </>
                       )}

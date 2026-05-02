@@ -1,122 +1,157 @@
 [
   {
-    "id": "organiser01@example.org",
-    "displayName": "Alex Smith",
+    "id": "organiser01@example.org", "username": "riverstride",
+    "preferredName": "Alex",
     "tags": ["Social Soccer", "Trail Run"],
     "about": "I love bringing people together for relaxed games and scenic runs. Expect upbeat energy, friendly coaching, and a welcome for first-timers.",
     "aboutPublic": true,
     "gender": "Female",
     "completedAt": 1777544053528,
-    "vibes": ["Casual"]
+    "vibes": ["Casual"],
+    "sharePreferredNameWithParticipants": false
   },
   {
     "id": "organiser02@example.org",
-    "displayName": "Taylor Nguyen",
+    "username": "kickabout",
+    "preferredName": "Taylor",
     "tags": ["Beach Volleyball", "Group Ride"],
     "about": "I run energetic beach volleyball sessions and group rides. I love finding new routes and introducing people to my favourite spots.",
     "aboutPublic": true,
     "gender": "Male",
     "completedAt": 1777544053529,
-    "vibes": ["Social"]
+    "vibes": ["Social"],
+    "sharePreferredNameWithParticipants": true
   },
   {
     "id": "organiser03@example.org",
-    "displayName": "Jordan Lee",
+    "username": "parkflow",
+    "preferredName": "Jordan",
     "tags": ["Yoga in the Park", "Park Pilates"],
     "about": "I teach gentle outdoor yoga and pilates with an emphasis on accessible movement and laughter — bring a mat and an open mind.",
     "aboutPublic": true,
     "gender": "Prefer not to say",
     "completedAt": 1777544053530,
-    "vibes": ["Beginner-friendly"]
+    "vibes": ["Beginner-friendly"],
+    "sharePreferredNameWithParticipants": false
   },
   {
     "id": "organiser04@example.org",
-    "displayName": "Morgan Patel",
+    "username": "climbcoach",
+    "preferredName": "Morgan",
     "tags": ["Cricket Net Session", "Indoor Rock Climb"],
     "about": "I coach with patience and encouragement — I focus on technique and steady improvement during nets and climbing sessions.",
     "aboutPublic": true,
     "gender": "Male",
     "completedAt": 1777544053531,
-    "vibes": ["Skills-focused"]
+    "vibes": ["Skills-focused"],
+    "sharePreferredNameWithParticipants": false
   },
   {
     "id": "organiser05@example.org",
-    "displayName": "Casey Brown",
+    "username": "communityspin",
+    "preferredName": "Casey",
     "tags": ["Table Tennis", "Community Swim"],
     "about": "I organise family-friendly activities and relaxed swim meetups — I prioritise safety and a fun atmosphere for everyone.",
     "aboutPublic": true,
     "gender": "Female",
     "completedAt": 1777544053532,
-    "vibes": ["Family"]
+    "vibes": ["Family"],
+    "sharePreferredNameWithParticipants": true
   },
   {
     "id": "participant01@example.org",
-    "displayName": "Sam R",
+    "username": "weekendcheer",
+    "preferredName": "Sam",
     "tags": ["Social"],
     "about": "I love weekend social games and meeting new people — you’ll find me cheering on everyone and staying friendly.",
     "aboutPublic": true,
     "gender": "Female",
     "completedAt": 1777544053533,
-    "vibes": ["Friendly"]
+    "vibes": ["Friendly"],
+    "sharePreferredNameWithParticipants": true
   },
   {
     "id": "participant02@example.org",
-    "displayName": "Jordan P",
+    "username": "sunrisepedal",
+    "preferredName": "Jordan",
     "tags": ["Outdoors"],
     "about": "I’m an outdoor enthusiast who enjoys long rides and sunrise hikes — always up for route tips and snacks.",
     "aboutPublic": true,
     "gender": "Male",
     "completedAt": 1777544053534,
-    "vibes": ["Active"]
+    "vibes": ["Active"],
+    "sharePreferredNameWithParticipants": false
   },
   {
     "id": "participant03@example.org",
-    "displayName": "Taylor R",
+    "username": "pbchaser",
+    "preferredName": "Taylor",
     "tags": ["Competitive"],
     "about": "I enjoy pushing limits and improving my personal bests — competition motivates me but I still enjoy good company.",
     "aboutPublic": true,
     "gender": "Prefer not to say",
     "completedAt": 1777544053535,
-    "vibes": ["Competitive"]
+    "vibes": ["Competitive"],
+    "sharePreferredNameWithParticipants": false
   },
   {
     "id": "participant04@example.org",
-    "displayName": "Riley M",
+    "username": "firsttimeriley",
+    "preferredName": "Riley",
     "tags": ["Beginner-friendly"],
     "about": "I’m new to group activities and here to learn — I ask questions and cheer others on.",
     "aboutPublic": true,
     "gender": "Female",
     "completedAt": 1777544053536,
-    "vibes": ["Beginner-friendly"]
+    "vibes": ["Beginner-friendly"],
+    "sharePreferredNameWithParticipants": true
   },
   {
     "id": "participant05@example.org",
-    "displayName": "Case P",
+    "username": "casualcase",
+    "preferredName": "Case",
     "tags": ["Casual"],
     "about": "I’m laid-back and enjoy casual sessions, relaxed company, and a good laugh after the game.",
     "aboutPublic": true,
     "gender": "Male",
     "completedAt": 1777544053537,
-    "vibes": ["Casual"]
+    "vibes": ["Casual"],
+    "sharePreferredNameWithParticipants": false
   },
   {
     "id": "reviewer01@example.org",
-    "displayName": "Maya T",
+    "username": "steadyreview",
+    "preferredName": "Maya",
     "tags": ["Reviewer"],
     "about": "I like trying new community events and writing short, honest reviews to help others decide.",
     "aboutPublic": true,
     "gender": "Female",
     "completedAt": 1777544053538,
-    "vibes": ["Thoughtful"]
+    "vibes": ["Thoughtful"],
+    "sharePreferredNameWithParticipants": false
   },
   {
     "id": "reviewer02@example.org",
-    "displayName": "Liam G",
+    "username": "helpfulvoice",
+    "preferredName": "Liam",
     "tags": ["Reviewer"],
     "about": "I attend events regularly and leave constructive feedback focused on organisation and fun.",
     "aboutPublic": true,
     "gender": "Male",
     "completedAt": 1777544053539,
-    "vibes": ["Helpful"]
+    "vibes": ["Helpful"],
+    "sharePreferredNameWithParticipants": false
+  },
+  {
+    "id": "username@une.edu.au",
+    "username": "username",
+    "preferredName": "Jamie",
+    "tags": ["Walking", "Basketball", "Cycling"],
+    "about": "I host easy-going UNE sessions that make it easy for people to join in without sharing more than they want to.",
+    "aboutPublic": true,
+    "gender": "Prefer not to say",
+    "completedAt": 1777544053540,
+    "vibes": ["Casual", "Social"],
+    "sharePreferredNameWithParticipants": false
   }
 ]
