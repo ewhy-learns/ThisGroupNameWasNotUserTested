@@ -1,5 +1,5 @@
 import React from 'react'
-import { applySkillSuggestion, deferSkillSuggestion, getParticipantReviewRecord, getPendingSkillSuggestions, getProfile, getProfileSectionVisibility, getPublicIdentityLabel, getEventParticipantLabel, isFriendWith, hasSentFriendRequest, sendFriendRequest, listEvents, needsHostWrapUp, needsParticipantReview, removeParticipant, reviewPendingApplication } from './AuthService'
+import { applySkillSuggestion, deferSkillSuggestion, getParticipantReviewRecord, getPendingSkillSuggestions, getProfile, getProfileSectionVisibility, getPublicIdentityLabel, getEventParticipantLabel, isFriendWith, hasSentFriendRequest, sendFriendRequest, listEvents, needsHostWrapUp, needsParticipantReview, removeParticipant, reviewPendingApplication, setParticipantCheckIn } from './AuthService'
 import ApplyModal from './ApplyModal'
 import ParticipantReviewModal from './ParticipantReviewModal'
 import HostWrapUpModal from './HostWrapUpModal'
@@ -93,6 +93,20 @@ export default function ViewSession({ open, eventId, onClose, userId }: Props) {
   const participants = React.useMemo(() => (
     Array.isArray(evt?.participants) ? evt.participants.map((entry: any) => String(entry)) : []
   ), [evt])
+
+  const participantList = React.useMemo(() => {
+    const ordered: string[] = []
+    const seen = new Set<string>()
+    const push = (value: any) => {
+      const next = String(value || '').trim()
+      if (!next || seen.has(next)) return
+      seen.add(next)
+      ordered.push(next)
+    }
+    push(evt?.host)
+    participants.forEach(push)
+    return ordered
+  }, [evt?.host, participants])
 
   const applications = React.useMemo(() => (
     Array.isArray(evt?.applications) ? evt.applications : []
@@ -243,7 +257,7 @@ export default function ViewSession({ open, eventId, onClose, userId }: Props) {
     const ages: number[] = []
     let visibleDemographicCount = 0
 
-    for (const participantId of participants) {
+    for (const participantId of participantList) {
       const profile = getProfile(participantId)
       if (!profile) continue
       const visibility = getProfileSectionVisibility(profile, 'demographic')
@@ -281,14 +295,14 @@ export default function ViewSession({ open, eventId, onClose, userId }: Props) {
       : null
 
     return {
-      totalParticipants: participants.length,
+      totalParticipants: participantList.length,
       visibleDemographicCount,
       genderCounts: Array.from(genderCounts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
       ageRangeCounts: Array.from(ageRangeCounts.entries()),
       meanAge,
       ageSampleCount: ages.length,
     }
-  }, [participants, userId, isHost])
+  }, [participantList, userId, isHost])
 
   React.useEffect(() => {
     if (!open) {
@@ -336,8 +350,11 @@ export default function ViewSession({ open, eventId, onClose, userId }: Props) {
   const hostProfile = evt?.host ? getProfile(evt.host) : null
   const hostUsername = hostProfile?.username || (evt?.host ? getPublicIdentityLabel(evt.host, hostProfile || undefined) : null)
   const hostPreferredName = hostProfile?.preferredName || null
+  const hostParticipantLabel = hostUsername
+    ? (hostPreferredName && hostPreferredName !== hostUsername ? `${hostUsername} (${hostPreferredName})` : hostUsername)
+    : (host || 'Organiser')
 
-  const approvedCount = participants.length
+  const approvedCount = participantList.length
   const pendingCount = pendingApplications.length
   const waitlistedCount = waitlistedApplications.length
   const hasCoords = typeof evt?.locationCoords?.lat === 'number' && typeof evt?.locationCoords?.lon === 'number'
@@ -354,6 +371,70 @@ export default function ViewSession({ open, eventId, onClose, userId }: Props) {
   const embedMapSrc = hasCoords
     ? `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(String(evt.locationCoords.lon - 0.01))}%2C${encodeURIComponent(String(evt.locationCoords.lat - 0.01))}%2C${encodeURIComponent(String(evt.locationCoords.lon + 0.01))}%2C${encodeURIComponent(String(evt.locationCoords.lat + 0.01))}&layer=mapnik&marker=${encodeURIComponent(String(evt.locationCoords.lat))}%2C${encodeURIComponent(String(evt.locationCoords.lon))}`
     : ''
+
+  const canApply = !!evt
+    && timeState !== 'postevent'
+    && !isHost
+    && !amRegistered
+    && timeState === 'upcoming'
+    && (!myApplication || myApplication.status === 'denied')
+
+  const primaryAction = React.useMemo(() => {
+    if (!evt) return null
+    if (isHost) {
+      return {
+        label: 'Edit',
+        className: 'btn' as const,
+        onClick: () => {
+          try {
+            window.dispatchEvent(new CustomEvent('demo1_edit_event', { detail: { event: evt } }))
+          } catch {}
+          onClose()
+        },
+      }
+    }
+    if (timeState === 'postevent' && amRegistered && shouldPromptParticipantReview) {
+      return {
+        label: 'Review',
+        className: 'btn' as const,
+        onClick: () => setShowReviewModal(true),
+      }
+    }
+    if (timeState !== 'postevent' && amRegistered) {
+      return {
+        label: 'Check-In',
+        className: 'btn' as const,
+        onClick: () => {
+          if (!userId || !evt?.id) return
+          if (timeState !== 'preevent') {
+            alert('Check-in opens 24 hours before the session starts.')
+            return
+          }
+          setParticipantCheckIn(evt.id, userId, true)
+          setReviewVersion(current => current + 1)
+          alert('You are checked in for this session.')
+        },
+      }
+    }
+    if (canApply) {
+      return {
+        label: 'Apply',
+        className: 'btn' as const,
+        onClick: () => {
+          if (!userId) {
+            try {
+              window.dispatchEvent(new CustomEvent('demo1_require_auth', { detail: { reason: 'apply', eventId: evt?.id } }))
+            } catch {
+              alert('Please log in to apply')
+            }
+            return
+          }
+          setShowApply(true)
+        },
+      }
+    }
+    return null
+  }, [amRegistered, canApply, evt, isHost, onClose, shouldPromptParticipantReview, timeState, userId])
 
   const getSkillLevelForUser = React.useCallback((targetUserId: string, fallback?: string) => {
     if (fallback) return fallback
@@ -436,8 +517,9 @@ export default function ViewSession({ open, eventId, onClose, userId }: Props) {
       if (!canViewParticipants) {
         return <div style={{ color: '#6b7280' }}>Participants become visible after approval.</div>
       }
-      const hostParticipantCards = participants.map((participantId: string) => {
-        const display = getEventParticipantLabel(evt, participantId, userId)
+      const hostParticipantCards = participantList.map((participantId: string) => {
+        const isOrganiserRow = participantId === evt.host
+        const display = isOrganiserRow ? hostParticipantLabel : getEventParticipantLabel(evt, participantId, userId)
         return (
           <div key={participantId} style={{ display: 'flex', alignItems: 'stretch', gap: 6 }}>
             <button
@@ -445,7 +527,11 @@ export default function ViewSession({ open, eventId, onClose, userId }: Props) {
               style={{ flex: 1, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', minWidth: 0, display: 'block' }}
               onClick={() => openProfile(participantId, { source: 'session_host_cards', eventId: evt.id, relation: 'participant' })}
             >
-              {renderHostPersonCard({ userId: participantId, label: display })}
+              {renderHostPersonCard({
+                userId: participantId,
+                label: display,
+                note: isOrganiserRow ? <span style={{ fontWeight: 700, color: '#b45309' }}>Organiser</span> : undefined,
+              })}
             </button>
             {participantId !== evt.host && (
               <button
@@ -475,10 +561,11 @@ export default function ViewSession({ open, eventId, onClose, userId }: Props) {
       }
 
       // Participant view — cards matching host style, with friend/message side action
-      const participantCards = participants
+      const participantCards = participantList
         .filter((participantId: string) => participantId !== userId)
         .map((participantId: string) => {
-          const display = getEventParticipantLabel(evt, participantId, userId)
+          const isOrganiserRow = participantId === evt.host
+          const display = isOrganiserRow ? hostParticipantLabel : getEventParticipantLabel(evt, participantId, userId)
           // friendRefreshKey forces re-evaluation after actions
           const alreadyFriend = userId ? isFriendWith(userId, participantId) : false
           const requestSent = userId && !alreadyFriend ? hasSentFriendRequest(userId, participantId) : false
@@ -489,7 +576,11 @@ export default function ViewSession({ open, eventId, onClose, userId }: Props) {
                 style={{ flex: 1, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', minWidth: 0, display: 'block' }}
                 onClick={() => openProfile(participantId)}
               >
-                {renderHostPersonCard({ userId: participantId, label: display })}
+                {renderHostPersonCard({
+                  userId: participantId,
+                  label: display,
+                  note: isOrganiserRow ? <span style={{ fontWeight: 700, color: '#b45309' }}>Organiser</span> : undefined,
+                })}
               </button>
               {alreadyFriend ? (
                 <button
@@ -530,15 +621,15 @@ export default function ViewSession({ open, eventId, onClose, userId }: Props) {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ fontSize: 13, color: '#6b7280' }}>
-            Approved participants: {approvedCount}{evt.participantsMax ? ` / ${evt.participantsMax}` : ''}
+            Participants: {approvedCount}{evt.participantsMax ? ` / ${evt.participantsMax}` : ''}
           </div>
-          {participants.length > 0 ? (isHost ? renderHostListContainer(hostParticipantCards) : renderHostListContainer(participantCards)) : (
-            <div style={{ color: '#9ca3af' }}>No approved participants yet</div>
+          {participantList.length > 0 ? (isHost ? renderHostListContainer(hostParticipantCards) : renderHostListContainer(participantCards)) : (
+            <div style={{ color: '#9ca3af' }}>No participants yet</div>
           )}
           {(isHost || amRegistered) && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, paddingTop: 16, borderTop: '1px solid rgba(15,23,32,0.06)' }}>
+              <button className="btn danger" type="button" onClick={() => setShowIncidentModal(true)}>Report</button>
               <button className="btn ghost" type="button" onClick={() => openMessages({ type: 'event', eventId: evt.id })}>Event chat</button>
-              <button className="btn ghost" type="button" onClick={() => alert('Report (prototype)')}>Report a participant</button>
             </div>
           )}
         </div>
@@ -559,7 +650,7 @@ export default function ViewSession({ open, eventId, onClose, userId }: Props) {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
             <div style={{ padding: 12, borderRadius: 14, background: '#f8fafc', border: '1px solid rgba(15,23,32,0.06)' }}>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>Approved participants</div>
+              <div style={{ fontSize: 12, color: '#6b7280' }}>Participants</div>
               <div style={{ fontSize: 20, fontWeight: 800, color: '#111827', marginTop: 4 }}>{participantStats.totalParticipants}</div>
             </div>
             <div style={{ padding: 12, borderRadius: 14, background: '#f8fafc', border: '1px solid rgba(15,23,32,0.06)' }}>
@@ -777,23 +868,8 @@ export default function ViewSession({ open, eventId, onClose, userId }: Props) {
             {evt && (
               <button className="btn ghost" style={{ padding: '4px 12px', fontSize: 13 }} onClick={() => alert('Share (prototype)')}>Share</button>
             )}
-            {/* Check-in button (if applicable) */}
-            {evt && timeState !== 'postevent' && amRegistered && (
-              <button className="btn ghost" style={{ padding: '4px 12px', fontSize: 13 }} onClick={addToCalendar}>Check-in</button>
-            )}
-            {/* Apply button (if applicable) */}
-            {evt && timeState !== 'postevent' && !isHost && !amRegistered && timeState === 'upcoming' && (!myApplication || myApplication.status === 'denied') && (
-              <button className="btn" style={{ padding: '4px 12px', fontSize: 13 }} onClick={() => {
-                if (!userId) {
-                  try {
-                    window.dispatchEvent(new CustomEvent('demo1_require_auth', { detail: { reason: 'apply', eventId: evt?.id } }))
-                  } catch {
-                    alert('Please log in to apply')
-                  }
-                  return
-                }
-                setShowApply(true)
-              }}>Apply</button>
+            {primaryAction && (
+              <button className={primaryAction.className} style={{ padding: '4px 12px', fontSize: 13 }} onClick={primaryAction.onClick}>{primaryAction.label}</button>
             )}
             <button type="button" className="modal-close" onClick={onClose} aria-label="Close"><XIcon size={16} /></button>
           </div>
@@ -803,22 +879,22 @@ export default function ViewSession({ open, eventId, onClose, userId }: Props) {
             <div>Loading…</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ display: 'flex', gap: 12, padding: 14, borderRadius: 18, background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.07), rgba(var(--secondary-rgb),0.06))', border: '1px solid rgba(15,23,32,0.06)' }}>
-                <EventAvatar event={evt} size={72} />
-                <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 14, borderRadius: 18, background: 'linear-gradient(135deg, rgba(var(--accent-rgb),0.07), rgba(var(--secondary-rgb),0.06))', border: '1px solid rgba(15,23,32,0.06)' }}>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                  <EventAvatar event={evt} size={72} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, color: '#6b7280' }}>{evt.date} · {evt.startTime}{evt.duration ? ` · ${Math.floor(evt.duration / 60)}h ${evt.duration % 60}m` : ''}</div>
                     <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>{evt.location || 'Location not specified'}</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start', alignItems: 'center', width: '100%', marginTop: 8 }}>
-                      <span className="chip" style={{ fontSize: 12, padding: '2px 8px', minHeight: 20 }}>{evt.activity || 'Session'}</span>
-                      <span className="chip" style={{ fontSize: 12, background: '#f1f5f9', color: '#0f172a', fontWeight: 700 }}>
-                        {evt.cost ? evt.cost : 'Free'}
-                      </span>
-                      {(evt.vibes || []).map((v: string) => (
-                        <span key={v} className="chip" style={{ fontSize: 12 }}>{v}</span>
-                      ))}
-                    </div>
                   </div>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start', alignItems: 'center', width: '100%' }}>
+                  <span className="chip" style={{ fontSize: 12, padding: '2px 8px', minHeight: 20 }}>{evt.activity || 'Session'}</span>
+                  <span className="chip" style={{ fontSize: 12, background: '#f1f5f9', color: '#0f172a', fontWeight: 700 }}>
+                    {evt.cost ? evt.cost : 'Free'}
+                  </span>
+                  {(evt.vibes || []).map((v: string) => (
+                    <span key={v} className="chip" style={{ fontSize: 12 }}>{v}</span>
+                  ))}
                 </div>
               </div>
 
@@ -937,14 +1013,12 @@ export default function ViewSession({ open, eventId, onClose, userId }: Props) {
                     )}
 
                   {timeState === 'postevent' && amRegistered && shouldPromptParticipantReview && <button className="btn ghost" style={footerButtonStyle} type="button" onClick={() => setShowReviewModal(true)}>Leave review</button>}
-                  {timeState === 'postevent' && amRegistered && <button className="btn ghost" style={footerButtonStyle} type="button" onClick={() => setShowIncidentModal(true)}>Incident form</button>}
                   {timeState === 'postevent' && !isHost && pendingSkillSuggestion && <button className="btn ghost" style={footerButtonStyle} type="button" onClick={() => { applySkillSuggestion(pendingSkillSuggestion.id, userId!); setReviewVersion(current => current + 1) }}>Apply suggestion</button>}
                   {timeState === 'postevent' && !isHost && pendingSkillSuggestion && <button className="btn ghost" style={footerButtonStyle} type="button" onClick={() => { deferSkillSuggestion(pendingSkillSuggestion.id, userId!); setReviewVersion(current => current + 1) }}>Later</button>}
 
                   {isHost && (
                     <>
                       {timeState === 'postevent' && participants.length > 0 && <button className="btn ghost" style={footerButtonStyle} type="button" onClick={() => setShowWrapUpModal(true)}>{shouldPromptHostWrapUp ? 'Session wrap up' : 'Edit wrap up'}</button>}
-                      {timeState === 'postevent' && <button className="btn ghost" style={footerButtonStyle} type="button" onClick={() => setShowIncidentModal(true)}>Incident form</button>}
                     </>
                   )}
                 </div>

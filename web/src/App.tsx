@@ -228,9 +228,17 @@ export default function App() {
         setMessagesOpen(true)
       } catch {}
     }
+    const onEditEvent = (ev: any) => {
+      try {
+        const editableEvent = ev?.detail?.event || null
+        if (!editableEvent) return
+        handleEditDraft(editableEvent)
+      } catch {}
+    }
     window.addEventListener('demo1_add_friend', onAddFriend as EventListener)
     window.addEventListener('demo1_message_user', onMessageUser as EventListener)
     window.addEventListener('demo1_open_messages', onOpenMessages as EventListener)
+    window.addEventListener('demo1_edit_event', onEditEvent as EventListener)
     return () => {
       window.removeEventListener('demo1_events_updated', onEventsUpdated as EventListener)
       window.removeEventListener('demo1_open_event', onOpenEvent as EventListener)
@@ -239,6 +247,7 @@ export default function App() {
       window.removeEventListener('demo1_add_friend', onAddFriend as EventListener)
       window.removeEventListener('demo1_message_user', onMessageUser as EventListener)
       window.removeEventListener('demo1_open_messages', onOpenMessages as EventListener)
+      window.removeEventListener('demo1_edit_event', onEditEvent as EventListener)
     }
   }, [user])
 
