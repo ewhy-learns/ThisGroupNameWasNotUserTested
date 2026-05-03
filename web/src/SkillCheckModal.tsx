@@ -1,5 +1,6 @@
 import React from 'react'
-import { getProfile, saveProfile } from './AuthService'
+import { getProfile, saveProfile, SkillLevel } from './AuthService'
+import { XIcon } from './Icons'
 
 type Props = {
   open: boolean
@@ -7,7 +8,7 @@ type Props = {
   userId: string
 }
 
-const LEVELS: Array<'Beginner'|'Intermediate'|'Advanced'> = ['Beginner','Intermediate','Advanced']
+const LEVELS: SkillLevel[] = ['No experience', 'Beginner', 'Intermediate', 'Advanced']
 
 export default function SkillCheckModal({ open, onClose, userId }: Props) {
   const [valuesLevel, setValuesLevel] = React.useState<Record<string,string>>({})
@@ -15,8 +16,9 @@ export default function SkillCheckModal({ open, onClose, userId }: Props) {
     if (!open) return
     const profile = getProfile(userId)
     const initialLevel: Record<string,string> = {}
-    if (profile && profile.tags) {
-      (profile.tags || []).forEach(t => {
+    const allActivities = Array.from(new Set([...(profile?.tags || []), ...Object.keys(profile?.skillChecks || {})]))
+    if (profile && allActivities.length > 0) {
+      allActivities.forEach(t => {
         const raw = profile.skillChecks && (profile.skillChecks as any)[t]
         if (!raw) {
           // leave undefined -> no radio selected (Not assessed)
@@ -31,7 +33,8 @@ export default function SkillCheckModal({ open, onClose, userId }: Props) {
   if (!open) return null
 
   const profile = getProfile(userId)
-  const tags = ((profile && profile.tags) || []).slice().sort((a,b) => a.localeCompare(b))
+  const preferredActivities = new Set(((profile && profile.tags) || []).map(tag => String(tag)))
+  const tags = Array.from(new Set([...(profile?.tags || []), ...Object.keys(profile?.skillChecks || {})])).slice().sort((a,b) => a.localeCompare(b))
 
   const setLevel = (tag: string, level: string) => {
     setValuesLevel(prev => ({ ...prev, [tag]: level }))
@@ -56,17 +59,19 @@ export default function SkillCheckModal({ open, onClose, userId }: Props) {
 
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true">
-      <div className="modal" style={{ maxWidth: 640 }}>
+      <div className="modal">
         <div className="modal-header">
           <h3>Skill check</h3>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">✕</button>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close"><XIcon size={16} /></button>
         </div>
         <div className="modal-body">
           <p style={{ marginTop: 0 }}>
             The skill checks allow other participants to gauge the general ability of the group. Each activity type can be either:
+            <br /><strong>No experience</strong> - Interested in trying it, but have not done the activity yet.
             <br /><strong>Beginner</strong> - Really new to the activity. Generally less than a year of experience
             <br /><strong>Intermediate</strong> - Know what you're doing but still developing your skills.
             <br /><strong>Advanced</strong> - Able to perform to a high ability. Likely in first grade or representative history in the activity
+            <br /><br />Activities marked <strong>Preferred</strong> are also in your interests list. Others are skill-only entries, which lets you keep a skill without adding that activity to your preferred activities.
           </p>
 
           {tags.length === 0 ? (
@@ -74,15 +79,21 @@ export default function SkillCheckModal({ open, onClose, userId }: Props) {
           ) : (
             <div style={{ maxHeight: 360, overflow: 'auto', paddingRight: 8 }}>
               {/* Table header */}
-              <div style={{ position: 'sticky', top: 0, background: 'white', zIndex: 2, display: 'grid', gridTemplateColumns: '1fr repeat(3, 1fr)', gap: 12, padding: '8px 0', borderBottom: '2px solid #e6e9ee', fontWeight: 700 }}>
+              <div style={{ position: 'sticky', top: 0, background: 'white', zIndex: 2, display: 'grid', gridTemplateColumns: '1fr repeat(4, 1fr)', gap: 12, padding: '8px 0', borderBottom: '2px solid #e6e9ee', fontWeight: 700 }}>
                 <div>Activity</div>
+                <div style={{ textAlign: 'center' }}>No experience</div>
                 <div style={{ textAlign: 'center' }}>Beginner</div>
                 <div style={{ textAlign: 'center' }}>Intermediate</div>
                 <div style={{ textAlign: 'center' }}>Advanced</div>
               </div>
               {tags.map(tag => (
-                <div key={tag} style={{ display: 'grid', gridTemplateColumns: '1fr repeat(3, 1fr)', gap: 12, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
-                  <div style={{ fontWeight: 600 }}>{tag}</div>
+                <div key={tag} style={{ display: 'grid', gridTemplateColumns: '1fr repeat(4, 1fr)', gap: 12, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{tag}</div>
+                    <div style={{ fontSize: 12, color: preferredActivities.has(tag) ? '#065f46' : '#6b7280', marginTop: 2 }}>
+                      {preferredActivities.has(tag) ? 'Preferred activity' : 'Skill only — not in preferred activities'}
+                    </div>
+                  </div>
                   {LEVELS.map(l => (
                     <div key={l} style={{ textAlign: 'center' }}>
                       <input type="radio" name={tag} value={l} checked={valuesLevel[tag] === l} onChange={() => setLevel(tag, l)} />
@@ -94,8 +105,8 @@ export default function SkillCheckModal({ open, onClose, userId }: Props) {
           )}
 
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            <button type="button" className="btn" onClick={handleSave}>Save</button>
             <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn" onClick={handleSave}>Save</button>
           </div>
         </div>
       </div>

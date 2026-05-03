@@ -657,7 +657,7 @@
     "photoDataUrl": null,
     "updatedAt": 1777639320000,
     "createdAt": 1777639200000,
-    "host": "username@une.edu.au",
+    "host": "username",
     "organiserName": "username"
   },
   {
@@ -689,7 +689,7 @@
     "photoDataUrl": null,
     "updatedAt": 1777639380000,
     "createdAt": 1777639380000,
-    "host": "username@une.edu.au",
+    "host": "username",
     "organiserName": "username"
   },
   {
@@ -719,7 +719,7 @@
     "photoDataUrl": null,
     "updatedAt": 1777639440000,
     "createdAt": 1777639440000,
-    "host": "username@une.edu.au",
+    "host": "username",
     "organiserName": "username"
   },
   {
@@ -740,12 +740,12 @@
     "participantsMin": 2,
     "participantsMax": 10,
     "participants": [
-      "username@une.edu.au",
+      "username",
       "participant01@example.org"
     ],
     "participantDetails": [
       {
-        "userId": "username@une.edu.au",
+        "userId": "username",
         "username": "username",
         "preferredName": "Jamie",
         "preferredNameVisibleToParticipants": false,
@@ -793,7 +793,7 @@
     ],
     "applications": [
       {
-        "userId": "username@une.edu.au",
+        "userId": "username",
         "status": "pending",
         "message": "Happy to fill in if there is still room.",
         "username": "username",
@@ -854,7 +854,7 @@
     ],
     "applications": [
       {
-        "userId": "username@une.edu.au",
+        "userId": "username",
         "status": "waitlisted",
         "message": "Please keep me in mind if somebody drops out.",
         "username": "username",

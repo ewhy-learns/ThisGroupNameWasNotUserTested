@@ -1,4 +1,5 @@
 import React from 'react'
+import { XIcon } from './Icons'
 
 type Props = {
   open: boolean
@@ -11,10 +12,10 @@ export default function AuthRequiredModal({ open, onClose, onLogin, onRegister }
   if (!open) return null
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true">
-      <div className="modal" style={{ maxWidth: 420 }}>
+      <div className="modal">
         <div className="modal-header">
           <h3>Sign in required</h3>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">✕</button>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close"><XIcon size={16} /></button>
         </div>
         <div className="modal-body">
           <p style={{ marginTop: 0 }}>You need to be signed in to perform this action. Please log in or register to continue.</p>

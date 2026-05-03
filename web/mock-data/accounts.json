@@ -4,5 +4,5 @@
   { "id": "organiser03@example.org", "createdAt": 1777544053530 },
   { "id": "organiser04@example.org", "createdAt": 1777544053531 },
   { "id": "organiser05@example.org", "createdAt": 1777544053532 },
-  { "id": "username@une.edu.au", "createdAt": 1777544053540 }
+  { "id": "username", "createdAt": 1777544053540 }
 ]

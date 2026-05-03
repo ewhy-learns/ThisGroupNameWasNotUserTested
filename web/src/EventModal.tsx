@@ -1,6 +1,7 @@
 import React from 'react'
 import { readEventDraft, saveEventDraft, clearEventDraft, saveEvent, getProfile, listEvents, suggestTag, saveDraftSession, deleteDraftSession, getPublicIdentityLabel } from './AuthService'
 import { LARGE_TAGS } from './ProfileModal'
+import { XIcon } from './Icons'
 
 type Props = { open: boolean; onClose: () => void; userId: string }
 
@@ -240,7 +241,7 @@ export default function EventModal({ open, onClose, userId }: Props) {
 
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true">
-      <div className="modal" style={{ maxWidth: 800 }}>
+      <div className="modal">
         <div className="modal-header">
           <h3 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>Create session
             <button type="button" title="Fill from template" className="icon-btn" onClick={() => setShowTemplates(s => !s)} style={{ marginLeft: 8 }}>
@@ -248,7 +249,7 @@ export default function EventModal({ open, onClose, userId }: Props) {
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="4" rx="1" /><rect x="3" y="6" width="18" height="14" rx="2" /></svg>
             </button>
           </h3>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">✕</button>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close"><XIcon size={16} /></button>
         </div>
         {showTemplates && (
           <div style={{ position: 'absolute', top: 78, right: 24, zIndex: 2400 }}>
@@ -423,6 +424,7 @@ export default function EventModal({ open, onClose, userId }: Props) {
               <label className="input-label">Suggested experience</label>
               <select className="input" value={draft.suggestedExperience || ''} onChange={e => setField('suggestedExperience', e.target.value)}>
                 <option value="">Choose</option>
+                <option>No experience</option>
                 <option>Beginner</option>
                 <option>Intermediate</option>
                 <option>Advanced</option>
@@ -456,7 +458,7 @@ export default function EventModal({ open, onClose, userId }: Props) {
 
           {step === 3 && (
             <div>
-              <h4>Session vibes & photo</h4>
+              <h4>Session vibes & avatar</h4>
               <p style={{ marginTop: 0 }}>Suggested vibes (based on your profile)</p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {suggestedVibes.map((v: string) => (
@@ -473,7 +475,8 @@ export default function EventModal({ open, onClose, userId }: Props) {
               </div>
 
               <div style={{ marginTop: 12 }}>
-                <label className="input-label">Add photo (optional)</label>
+                <label className="input-label">Event avatar (optional)</label>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>This image is used as the session avatar in search results and session lists.</div>
                 <input type="file" accept="image/*" onChange={e => {
                   const f = e.target.files && e.target.files[0]
                   if (!f) return
@@ -481,7 +484,7 @@ export default function EventModal({ open, onClose, userId }: Props) {
                   reader.onload = () => setField('photoDataUrl', reader.result as string)
                   reader.readAsDataURL(f)
                 }} />
-                {draft.photoDataUrl && <div style={{ marginTop: 8 }}><img src={draft.photoDataUrl} alt="preview" style={{ maxWidth: '100%', borderRadius: 8 }} /></div>}
+                {draft.photoDataUrl && <div style={{ marginTop: 8 }}><img src={draft.photoDataUrl} alt="preview" style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 20, border: '1px solid rgba(15,23,32,0.08)' }} /></div>}
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>

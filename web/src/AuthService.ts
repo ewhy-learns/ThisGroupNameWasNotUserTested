@@ -1,22 +1,47 @@
 export type Account = {
   id: string
   createdAt: number
+  recoveryEmail?: string
 }
 
 const ACCOUNTS_KEY = 'demo1_accounts_v1'
 const USER_KEY = 'demo1_user_v1'
 const UNE_EMAIL_DOMAIN = 'une.edu.au'
+const USERNAME_PATTERN = /^[a-z0-9._-]{3,}$/i
 
 function looksLikePhone(value: string) {
   return /^[+\d][\d\s-]{6,}$/.test(value)
 }
 
+function normalizeEmail(value: string | null | undefined) {
+  const trimmed = String(value || '').trim().toLowerCase()
+  return /^\S+@\S+\.\S+$/.test(trimmed) ? trimmed : ''
+}
+
+function normalizePhoneLookup(value: string | null | undefined) {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return ''
+  const normalized = trimmed.replace(/[\s-]+/g, '')
+  return /^\+?\d{7,}$/.test(normalized) ? normalized : ''
+}
+
+function getLegacyUneAccountId(value: string) {
+  const normalized = normalizeAccountId(value)
+  if (!normalized || normalized.includes('@') || looksLikePhone(normalized)) return normalized
+  return `${normalized}@${UNE_EMAIL_DOMAIN}`
+}
+
 export function normalizeAccountId(value: string) {
   const trimmed = String(value || '').trim()
   if (!trimmed) return ''
-  if (trimmed.includes('@')) return trimmed.toLowerCase()
   if (looksLikePhone(trimmed)) return trimmed
-  return `${trimmed.replace(/\s+/g, '').toLowerCase()}@${UNE_EMAIL_DOMAIN}`
+  if (trimmed.includes('@')) {
+    const lower = trimmed.toLowerCase()
+    const [localPart, domain] = lower.split('@')
+    if (domain === UNE_EMAIL_DOMAIN && USERNAME_PATTERN.test(localPart)) return localPart
+    return lower
+  }
+  return trimmed.replace(/\s+/g, '').toLowerCase()
 }
 
 function deriveUsernameFromId(id: string) {
@@ -26,11 +51,28 @@ function deriveUsernameFromId(id: string) {
   return trimmed
 }
 
+function normalizeAccountRecord(account: any): Account | null {
+  const id = normalizeAccountId(account?.id || '')
+  if (!id) return null
+  return {
+    id,
+    createdAt: Number(account?.createdAt || Date.now()),
+    recoveryEmail: normalizeEmail(account?.recoveryEmail) || undefined,
+  }
+}
+
 function readAccounts(): Account[] {
   try {
     const raw = localStorage.getItem(ACCOUNTS_KEY)
     if (!raw) return []
-    return JSON.parse(raw) as Account[]
+    const parsed = JSON.parse(raw)
+    const accounts = Array.isArray(parsed)
+      ? parsed.map(normalizeAccountRecord).filter((account): account is Account => !!account)
+      : []
+    if (JSON.stringify(parsed) !== JSON.stringify(accounts)) {
+      writeAccounts(accounts)
+    }
+    return accounts
   } catch {
     return []
   }
@@ -47,12 +89,53 @@ export function accountExists(id: string): boolean {
   return accounts.some(a => normalizeAccountId(a.id) === normalizedId)
 }
 
-export function registerAccount(id: string) {
+export function findAccountIdByIdentifier(value: string): string {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return ''
+
+  const accounts = readAccounts()
+  const normalizedId = normalizeAccountId(trimmed)
+  const directMatch = accounts.find(account => account.id === normalizedId)
+  if (directMatch) return directMatch.id
+
+  const normalizedEmail = normalizeEmail(trimmed)
+  if (normalizedEmail) {
+    const recoveryMatch = accounts.find(account => normalizeEmail(account.recoveryEmail) === normalizedEmail)
+    if (recoveryMatch) return recoveryMatch.id
+
+    const profileEmailMatch = accounts.find(account => normalizeEmail(getProfile(account.id)?.email) === normalizedEmail)
+    if (profileEmailMatch) return profileEmailMatch.id
+  }
+
+  const normalizedPhone = normalizePhoneLookup(trimmed)
+  if (normalizedPhone) {
+    const phoneMatch = accounts.find(account => normalizePhoneLookup(getProfile(account.id)?.phone) === normalizedPhone)
+    if (phoneMatch) return phoneMatch.id
+  }
+
+  return ''
+}
+
+export function getAccountRecoveryEmail(id: string): string {
+  const normalizedId = normalizeAccountId(id)
+  if (!normalizedId) return ''
+  return normalizeEmail(readAccounts().find(account => account.id === normalizedId)?.recoveryEmail) || ''
+}
+
+export function registerAccount(id: string, recoveryEmail?: string) {
   const normalizedId = normalizeAccountId(id)
   if (!normalizedId) throw new Error('Invalid id')
+  const normalizedRecoveryEmail = normalizeEmail(recoveryEmail)
   const accounts = readAccounts()
-  if (accounts.some(a => normalizeAccountId(a.id) === normalizedId)) return normalizedId
-  accounts.push({ id: normalizedId, createdAt: Date.now() })
+  const existingIndex = accounts.findIndex(a => normalizeAccountId(a.id) === normalizedId)
+  if (existingIndex >= 0) {
+    if (normalizedRecoveryEmail && accounts[existingIndex].recoveryEmail !== normalizedRecoveryEmail) {
+      accounts[existingIndex] = { ...accounts[existingIndex], recoveryEmail: normalizedRecoveryEmail }
+      writeAccounts(accounts)
+    }
+    return normalizedId
+  }
+  accounts.push({ id: normalizedId, createdAt: Date.now(), recoveryEmail: normalizedRecoveryEmail || undefined })
   writeAccounts(accounts)
   return normalizedId
 }
@@ -81,7 +164,15 @@ const REG_DRAFT_KEY = 'demo1_registration_draft_v1'
 const EVENT_DRAFT_KEY = 'demo1_event_draft_v1'
 const EVENT_SESSION_DRAFTS_KEY = 'demo1_event_session_drafts_v1'
 const EVENTS_KEY = 'demo1_events_v1'
+const APP_SETTINGS_KEY = 'demo1_app_settings_v1'
 const MESSAGE_THREADS_KEY = 'demo1_message_threads_v1'
+const PARTICIPANT_REVIEWS_KEY = 'demo1_participant_reviews_v1'
+const HOST_WRAPUPS_KEY = 'demo1_host_wrapups_v1'
+const SKILL_SUGGESTIONS_KEY = 'demo1_skill_suggestions_v1'
+const INCIDENT_REPORTS_KEY = 'demo1_incident_reports_v1'
+const FRIEND_REQUESTS_KEY = 'demo1_friend_requests_v1'
+const REVIEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+const REVIEW_LATER_MS = 24 * 60 * 60 * 1000
 
 export type Profile = {
   id: string
@@ -104,10 +195,52 @@ export type Profile = {
   completedAt?: number
   sharePreferredNameWithParticipants?: boolean
   // optional per-tag skill assessments; maps tag -> level. If a tag is absent, it's considered "Not assessed".
-  skillChecks?: { [tag: string]: 'Beginner' | 'Intermediate' | 'Advanced' }
+  skillChecks?: { [tag: string]: SkillLevel }
   // optional list of "vibes" (social/contextual tags)
   vibes?: string[]
   rating?: number
+  photoDataUrl?: string | null
+  avatarDataUrl?: string | null
+  avatarUrl?: string | null
+  friendIds?: string[]
+  privacy?: ProfilePrivacySettings
+  colorScheme?: 'orange-blue' | 'green-gold' | 'light-blue-darkblue' | 'greyscale'
+}
+
+export type ThemeColorScheme = 'orange-blue' | 'green-gold' | 'light-blue-darkblue' | 'greyscale'
+export type ProfileSectionKey = 'interests' | 'vibes' | 'about' | 'demographic' | 'contact' | 'hostHistory' | 'participantHistory' | 'reviews'
+export type ProfileSectionVisibility = 'private' | 'hosts' | 'public'
+export type ProfilePrivacySettings = Partial<Record<ProfileSectionKey, ProfileSectionVisibility>>
+
+export type ProfileAccessContext = {
+  source?: 'session_host_cards'
+  eventId?: string
+  relation?: 'participant' | 'application'
+}
+
+export type AppSettings = {
+  userId: string
+  colorScheme?: ThemeColorScheme
+}
+
+export type ProfileReviewEntry = {
+  id: string
+  type: 'host' | 'participant'
+  eventId: string
+  eventTitle: string
+  reviewerLabel: string
+  createdAt: number
+  rating?: number
+  body?: string
+  isAnonymous?: boolean
+  suggestedSkillLevel?: SkillLevel
+}
+
+export type SkillLevel = 'No experience' | 'Beginner' | 'Intermediate' | 'Advanced'
+
+export type EventLocationCoords = {
+  lat: number
+  lon: number
 }
 
 export type Application = {
@@ -118,8 +251,10 @@ export type Application = {
   username?: string
   preferredName?: string
   preferredNameVisibleToParticipants?: boolean
-  skillLevel?: 'Beginner' | 'Intermediate' | 'Advanced'
+  skillLevel?: SkillLevel
   appliedAt: number
+  feedback?: string
+  waitlistReason?: 'capacity' | 'pending_review'
 }
 
 export type ParticipantDetails = {
@@ -160,6 +295,86 @@ export type MessageThreadSummary = {
   otherUserId?: string
 }
 
+export type ParticipantReviewRecord = {
+  eventId: string
+  userId: string
+  hostId: string
+  checkedIn?: boolean
+  hostRating?: number
+  anonymousHostRating?: boolean
+  feedback?: string
+  submittedAt?: number
+  reviewLaterUntil?: number
+  updatedAt: number
+}
+
+export type SessionRecommendation = {
+  score: number
+  badgeCount: number
+  badge: string
+  reasons: string[]
+}
+
+export type HostWrapUpEntry = {
+  userId: string
+  didAttend: boolean
+  currentSkillLevel?: SkillLevel
+  suggestedSkillLevel?: SkillLevel
+  feedback?: string
+  updatedAt: number
+}
+
+export type HostWrapUpRecord = {
+  eventId: string
+  hostId: string
+  activity?: string
+  submittedAt: number
+  updatedAt: number
+  participants: HostWrapUpEntry[]
+}
+
+export type SkillSuggestionRecord = {
+  id: string
+  eventId: string
+  userId: string
+  hostId: string
+  activity: string
+  currentSkillLevel?: SkillLevel
+  suggestedSkillLevel: SkillLevel
+  feedback?: string
+  createdAt: number
+  updatedAt: number
+  appliedAt?: number
+  reviewLaterUntil?: number
+}
+
+export type IncidentReportRecord = {
+  id: string
+  eventId: string
+  userId: string
+  reporterRole: 'participant' | 'host'
+  category: string
+  details: string
+  createdAt: number
+}
+
+export type PendingAction = {
+  id: string
+  type: 'approval' | 'participantReview' | 'hostWrapUp' | 'skillSuggestion' | 'incidentReport' | 'friendRequest'
+  eventId?: string
+  fromUserId?: string
+  title: string
+  subtitle: string
+  waitedSince: number
+}
+
+export type FriendRequest = {
+  id: string
+  fromUserId: string
+  toUserId: string
+  sentAt: number
+}
+
 export type StoredDraftSession = EventDraft & {
   id: string
   host: string
@@ -179,6 +394,30 @@ function sanitizeText(s: string | undefined | null) {
   return out
 }
 
+function normalizeColorScheme(value?: string | null): ThemeColorScheme {
+  return (value === 'green-gold' || value === 'light-blue-darkblue' || value === 'greyscale' || value === 'orange-blue') ? value : 'orange-blue'
+}
+
+function normalizeProfileSectionVisibility(section: ProfileSectionKey, value?: string | null): ProfileSectionVisibility {
+  if (section === 'demographic' || section === 'contact') {
+    return value === 'hosts' ? 'hosts' : 'private'
+  }
+  return (value === 'hosts' || value === 'public' || value === 'private') ? value : 'private'
+}
+
+function normalizeProfilePrivacy(profile: Profile | null | undefined): ProfilePrivacySettings {
+  return {
+    interests: normalizeProfileSectionVisibility('interests', profile?.privacy?.interests ?? 'public'),
+    vibes: normalizeProfileSectionVisibility('vibes', profile?.privacy?.vibes ?? 'public'),
+    about: normalizeProfileSectionVisibility('about', profile?.privacy?.about ?? (profile?.aboutPublic ? 'public' : 'private')),
+    demographic: normalizeProfileSectionVisibility('demographic', profile?.privacy?.demographic ?? 'private'),
+    contact: normalizeProfileSectionVisibility('contact', profile?.privacy?.contact ?? 'private'),
+    hostHistory: normalizeProfileSectionVisibility('hostHistory', profile?.privacy?.hostHistory ?? 'public'),
+    participantHistory: normalizeProfileSectionVisibility('participantHistory', profile?.privacy?.participantHistory ?? 'private'),
+    reviews: normalizeProfileSectionVisibility('reviews', profile?.privacy?.reviews ?? 'public'),
+  }
+}
+
 function normalizeProfile(profile: Profile | null): Profile | null {
   if (!profile) return null
   const normalizedId = normalizeAccountId(profile.id)
@@ -192,8 +431,166 @@ function normalizeProfile(profile: Profile | null): Profile | null {
     displayName: preferredName || profile.displayName,
     email: profile.email ? String(profile.email).trim().toLowerCase() : profile.email,
     phone: profile.phone ? String(profile.phone).trim() : profile.phone,
+    privacy: normalizeProfilePrivacy(profile),
+    aboutPublic: normalizeProfilePrivacy(profile).about === 'public',
     sharePreferredNameWithParticipants: !!profile.sharePreferredNameWithParticipants,
+    friendIds: uniqueIds(Array.isArray(profile.friendIds) ? profile.friendIds.map(item => String(item)) : []),
+    colorScheme: normalizeColorScheme(profile.colorScheme),
   }
+}
+
+function getAppSettingsStorageKey(userId: string) {
+  return `${APP_SETTINGS_KEY}_${normalizeAccountId(userId)}`
+}
+
+export function getAppSettings(userId?: string | null): AppSettings | null {
+  const normalizedUserId = normalizeAccountId(String(userId || ''))
+  if (!normalizedUserId) return null
+  try {
+    const raw = localStorage.getItem(getAppSettingsStorageKey(normalizedUserId))
+    if (!raw) {
+      const profile = getProfile(normalizedUserId)
+      return { userId: normalizedUserId, colorScheme: normalizeColorScheme(profile?.colorScheme) }
+    }
+    const parsed = JSON.parse(raw)
+    return {
+      userId: normalizedUserId,
+      colorScheme: normalizeColorScheme(parsed?.colorScheme),
+    }
+  } catch {
+    return { userId: normalizedUserId, colorScheme: 'orange-blue' }
+  }
+}
+
+export function saveAppSettings(userId: string, settings: AppSettings) {
+  const normalizedUserId = normalizeAccountId(userId)
+  if (!normalizedUserId) return null
+  const next: AppSettings = {
+    userId: normalizedUserId,
+    colorScheme: normalizeColorScheme(settings?.colorScheme),
+  }
+  localStorage.setItem(getAppSettingsStorageKey(normalizedUserId), JSON.stringify(next))
+  try {
+    if (typeof window !== 'undefined' && window.dispatchEvent) {
+      window.dispatchEvent(new CustomEvent('demo1_app_settings_updated', { detail: { userId: normalizedUserId } }))
+    }
+  } catch {}
+  return next
+}
+
+export function getProfileSectionVisibility(profile: Profile | null | undefined, section: ProfileSectionKey): ProfileSectionVisibility {
+  return normalizeProfilePrivacy(profile)[section]
+}
+
+function canViewHostOnlyProfileSectionWithContext(
+  viewerId: string | null | undefined,
+  profileOwnerId: string,
+  context?: ProfileAccessContext,
+) {
+  const normalizedViewerId = normalizeAccountId(String(viewerId || ''))
+  const normalizedOwnerId = normalizeAccountId(profileOwnerId)
+  if (!normalizedViewerId || !normalizedOwnerId || normalizedViewerId === normalizedOwnerId) return false
+  if (!context || context.source !== 'session_host_cards' || !context.eventId) return false
+
+  const event = listEvents().find(entry => String(entry?.id) === String(context.eventId))
+  if (!event) return false
+  if (normalizeAccountId(event.host || '') !== normalizedViewerId) return false
+
+  const participantMatch = Array.isArray(event.participants)
+    && event.participants.some((entry: any) => normalizeAccountId(String(entry)) === normalizedOwnerId)
+  const applicationMatch = Array.isArray(event.applications)
+    && event.applications.some((entry: any) => normalizeAccountId(entry?.userId || '') === normalizedOwnerId)
+
+  if (context.relation === 'participant') return participantMatch
+  if (context.relation === 'application') return applicationMatch
+  return participantMatch || applicationMatch
+}
+
+export function canViewProfileSection(
+  profileOwnerId: string,
+  viewerId: string | null | undefined,
+  section: ProfileSectionKey,
+  profile?: Profile | null,
+  context?: ProfileAccessContext,
+) {
+  const normalizedOwnerId = normalizeAccountId(profileOwnerId)
+  const normalizedViewerId = normalizeAccountId(String(viewerId || ''))
+  if (!normalizedOwnerId) return false
+  if (normalizedViewerId && normalizedViewerId === normalizedOwnerId) return true
+  const visibility = getProfileSectionVisibility(profile ?? getProfile(normalizedOwnerId), section)
+  if (visibility === 'public') return true
+  if (visibility === 'hosts') return canViewHostOnlyProfileSectionWithContext(normalizedViewerId, normalizedOwnerId, context)
+  return false
+}
+
+function sortEventsByStartDesc(a: any, b: any) {
+  return (getEventStartTimestamp(b) || b?.createdAt || 0) - (getEventStartTimestamp(a) || a?.createdAt || 0)
+}
+
+function isEventVisibleInProfileHistory(event: any, profileOwnerId: string, viewerId: string | null | undefined) {
+  const normalizedOwnerId = normalizeAccountId(profileOwnerId)
+  const normalizedViewerId = normalizeAccountId(String(viewerId || ''))
+  if (normalizedViewerId && normalizedViewerId === normalizedOwnerId) return true
+  return String(event?.visibility || 'Public') === 'Public'
+}
+
+export function listHostedSessionsForProfile(profileOwnerId: string, viewerId?: string | null) {
+  const normalizedOwnerId = normalizeAccountId(profileOwnerId)
+  return listEvents()
+    .filter(event => normalizeAccountId(event?.host || '') === normalizedOwnerId)
+    .filter(event => isEventVisibleInProfileHistory(event, normalizedOwnerId, viewerId))
+    .sort(sortEventsByStartDesc)
+}
+
+export function listParticipantSessionsForProfile(profileOwnerId: string, viewerId?: string | null) {
+  const normalizedOwnerId = normalizeAccountId(profileOwnerId)
+  return listEvents()
+    .filter(event => Array.isArray(event?.participants) && event.participants.some((entry: any) => normalizeAccountId(String(entry)) === normalizedOwnerId))
+    .filter(event => isEventVisibleInProfileHistory(event, normalizedOwnerId, viewerId))
+    .sort(sortEventsByStartDesc)
+}
+
+export function listProfileReviews(profileOwnerId: string): ProfileReviewEntry[] {
+  const normalizedOwnerId = normalizeAccountId(profileOwnerId)
+  if (!normalizedOwnerId) return []
+
+  const hostReviews: ProfileReviewEntry[] = readStoredList<ParticipantReviewRecord>(PARTICIPANT_REVIEWS_KEY)
+    .filter(record => normalizeAccountId(record.hostId) === normalizedOwnerId)
+    .filter(record => typeof record.submittedAt === 'number')
+    .map(record => {
+      const event = findEventById(record.eventId)
+      return {
+        id: `host_review:${record.eventId}:${record.userId}`,
+        type: 'host',
+        eventId: record.eventId,
+        eventTitle: event?.title || event?.activity || 'Session',
+        reviewerLabel: record.anonymousHostRating ? 'Anonymous participant' : getPublicIdentityLabel(record.userId),
+        createdAt: Number(record.submittedAt || record.updatedAt || 0),
+        rating: typeof record.hostRating === 'number' ? record.hostRating : undefined,
+        body: record.feedback,
+        isAnonymous: !!record.anonymousHostRating,
+      }
+    })
+
+  const participantReviews: ProfileReviewEntry[] = readStoredList<HostWrapUpRecord>(HOST_WRAPUPS_KEY)
+    .flatMap(record => record.participants
+      .filter(entry => normalizeAccountId(entry.userId) === normalizedOwnerId)
+      .filter(entry => !!entry.feedback || !!entry.suggestedSkillLevel)
+      .map(entry => {
+        const event = findEventById(record.eventId)
+        return {
+          id: `participant_review:${record.eventId}:${record.hostId}:${entry.userId}`,
+          type: 'participant',
+          eventId: record.eventId,
+          eventTitle: event?.title || event?.activity || record.activity || 'Session',
+          reviewerLabel: getPublicIdentityLabel(record.hostId),
+          createdAt: Number(entry.updatedAt || record.updatedAt || record.submittedAt || 0),
+          body: entry.feedback,
+          suggestedSkillLevel: entry.suggestedSkillLevel,
+        }
+      }))
+
+  return [...hostReviews, ...participantReviews].sort((a, b) => b.createdAt - a.createdAt)
 }
 
 export function getPublicUsername(id: string, profile?: Profile | null) {
@@ -244,7 +641,27 @@ export function getEventParticipantLabel(event: any, participantId: string, view
 export function getProfile(id: string): Profile | null {
   try {
     const normalizedId = normalizeAccountId(id)
-    const raw = localStorage.getItem(PROFILE_KEY + '_' + normalizedId)
+    const primaryKey = PROFILE_KEY + '_' + normalizedId
+    let raw = localStorage.getItem(primaryKey)
+    if (!raw) {
+      const legacyId = getLegacyUneAccountId(id)
+      if (legacyId && legacyId !== normalizedId) {
+        const legacyKey = PROFILE_KEY + '_' + legacyId
+        raw = localStorage.getItem(legacyKey)
+        if (raw) {
+          try {
+            const migrated = normalizeProfile(JSON.parse(raw) as Profile)
+            if (migrated) {
+              localStorage.setItem(primaryKey, JSON.stringify(migrated))
+              localStorage.removeItem(legacyKey)
+              raw = localStorage.getItem(primaryKey)
+            }
+          } catch {
+            // ignore migration issues and continue with legacy value
+          }
+        }
+      }
+    }
     if (!raw) return null
     const prof = normalizeProfile(JSON.parse(raw) as Profile)
     if (!prof) return null
@@ -272,6 +689,11 @@ export function saveProfile(profile: Profile) {
   const normalized = normalizeProfile(profile)
   if (!normalized) return
   localStorage.setItem(PROFILE_KEY + '_' + normalized.id, JSON.stringify(normalized))
+  try {
+    if (typeof window !== 'undefined' && window.dispatchEvent) {
+      window.dispatchEvent(new CustomEvent('demo1_profile_updated', { detail: { id: normalized.id } }))
+    }
+  } catch {}
 }
 
 export function isProfileComplete(id: string): boolean {
@@ -304,6 +726,7 @@ export function getSuggestedTags(): string[] {
 // registration draft helpers (persist form between sessions)
 export type RegistrationDraft = {
   username?: string
+  recoveryEmail?: string
   preferredName?: string
   displayName?: string
   yearOfBirth?: string
@@ -342,15 +765,18 @@ export type EventDraft = {
   title?: string
   activity?: string
   location?: string
+  locationCoords?: EventLocationCoords
   date?: string
   startTime?: string
   endTime?: string
+  duration?: number
   visibility?: 'Public'|'Friends'|'Invitation only'
   description?: string
-  suggestedExperience?: 'Beginner'|'Intermediate'|'Advanced'|undefined
+  suggestedExperience?: SkillLevel | undefined
   participantsMin?: number
   participantsMax?: number
   cost?: string
+  costValue?: number
   equipment?: string
   vibes?: string[]
   photoDataUrl?: string | null
@@ -413,6 +839,20 @@ function uniqueIds(values: string[]) {
   return out
 }
 
+function uniqueStrings(values: Array<string | null | undefined>) {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const value of values) {
+    const trimmed = String(value || '').trim()
+    if (!trimmed) continue
+    const key = trimmed.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(trimmed)
+  }
+  return out
+}
+
 function normalizeParticipantDetailsEntry(entry: any): ParticipantDetails | null {
   const userId = normalizeAccountId(entry?.userId || entry?.id || '')
   if (!userId) return null
@@ -427,6 +867,17 @@ function normalizeParticipantDetailsEntry(entry: any): ParticipantDetails | null
   }
 }
 
+export function parseEventCostValue(cost?: string | number | null): number | undefined {
+  if (typeof cost === 'number' && !Number.isNaN(cost)) return Math.max(0, cost)
+  const raw = String(cost || '').trim()
+  if (!raw) return undefined
+  if (/^free$/i.test(raw)) return 0
+  const match = raw.match(/-?\d+(?:\.\d+)?/)
+  if (!match) return undefined
+  const parsed = Number(match[0])
+  return Number.isNaN(parsed) ? undefined : Math.max(0, parsed)
+}
+
 function normalizeEventRecord<T extends EventDraft | EventItem>(event: T): T {
   const normalizedHost = event?.host ? normalizeAccountId(String(event.host).trim()) : ''
   const participantsMin = typeof event?.participantsMin === 'number' && !Number.isNaN(event.participantsMin)
@@ -438,6 +889,14 @@ function normalizeEventRecord<T extends EventDraft | EventItem>(event: T): T {
   const normalizedParticipantsMin = participantsMin !== undefined && participantsMax !== undefined && participantsMin > participantsMax
     ? participantsMax
     : participantsMin
+  const duration = typeof event?.duration === 'number' && !Number.isNaN(event.duration) ? Math.max(0, Number(event.duration)) : undefined
+  const costValue = parseEventCostValue((event as any)?.costValue ?? event?.cost)
+  const locationCoords = (event as any)?.locationCoords && (event as any).locationCoords.lat !== undefined && (event as any).locationCoords.lon !== undefined
+    ? {
+        lat: Number((event as any).locationCoords.lat),
+        lon: Number((event as any).locationCoords.lon),
+      }
+    : undefined
   const participants = uniqueIds(Array.isArray(event?.participants) ? event.participants.map((entry: any) => String(entry)) : [])
   const participantDetailsMap = new Map<string, ParticipantDetails>()
 
@@ -506,8 +965,11 @@ function normalizeEventRecord<T extends EventDraft | EventItem>(event: T): T {
     ...event,
     host: normalizedHost,
     organiserName,
+    locationCoords: locationCoords && !Number.isNaN(locationCoords.lat) && !Number.isNaN(locationCoords.lon) ? locationCoords : undefined,
+    duration,
     participantsMin: normalizedParticipantsMin,
     participantsMax,
+    costValue,
     participants,
     participantDetails,
     applications,
@@ -617,6 +1079,12 @@ export function ensureDirectMessageThread(userId: string, otherUserId: string) {
     },
   }
   const normalized = normalizeMessageThread(base)
+  if (existingIndex >= 0) {
+    const existing = threads[existingIndex]
+    if (JSON.stringify(existing) === JSON.stringify(normalized)) {
+      return existing
+    }
+  }
   if (existingIndex >= 0) threads[existingIndex] = normalized
   else threads.push(normalized)
   writeMessageThreads(threads)
@@ -647,6 +1115,12 @@ export function ensureEventMessageThread(eventId: string, userId: string) {
       [normalizedUserId]: Number(existing?.lastReadAtBy?.[normalizedUserId] || now),
     },
   })
+  if (existingIndex >= 0) {
+    const current = threads[existingIndex]
+    if (JSON.stringify(current) === JSON.stringify(next)) {
+      return current
+    }
+  }
   if (existingIndex >= 0) threads[existingIndex] = next
   else threads.push(next)
   writeMessageThreads(threads)
@@ -660,6 +1134,11 @@ export function markMessageThreadRead(threadId: string, userId: string) {
     const threads = readMessageThreads().map(normalizeMessageThread)
     const index = threads.findIndex(thread => thread.id === threadId && thread.participantIds.includes(normalizedUserId))
     if (index === -1) return null
+    const latestIncoming = threads[index].messages
+      .filter(message => message.senderId !== normalizedUserId)
+      .reduce((latest, message) => Math.max(latest, Number(message.sentAt || 0)), 0)
+    const currentReadAt = Number(threads[index].lastReadAtBy?.[normalizedUserId] || 0)
+    if (latestIncoming <= currentReadAt) return threads[index]
     threads[index] = {
       ...threads[index],
       lastReadAtBy: {
@@ -760,6 +1239,577 @@ export function getAccessibleMessageThreads(userId: string): MessageThreadSummar
 
 export function getUnreadMessageCount(userId: string) {
   return getAccessibleMessageThreads(userId).reduce((sum, thread) => sum + thread.unreadCount, 0)
+}
+
+export function addFriendToProfile(userId: string, friendId: string) {
+  const normalizedUserId = normalizeAccountId(userId)
+  const normalizedFriendId = normalizeAccountId(friendId)
+  if (!normalizedUserId || !normalizedFriendId || normalizedUserId === normalizedFriendId) return null
+  const userProfile = getProfile(normalizedUserId)
+  const friendProfile = getProfile(normalizedFriendId)
+  if (!userProfile || !friendProfile) return null
+  const userFriends = uniqueIds([...(userProfile.friendIds || []), normalizedFriendId])
+  const friendFriends = uniqueIds([...(friendProfile.friendIds || []), normalizedUserId])
+  saveProfile({ ...userProfile, friendIds: userFriends })
+  saveProfile({ ...friendProfile, friendIds: friendFriends })
+  return userFriends
+}
+
+export function getFriendIds(userId: string) {
+  return uniqueIds(getProfile(userId)?.friendIds || [])
+}
+
+function emitFriendRequestsUpdated(detail?: object) {
+  try { window.dispatchEvent(new CustomEvent('demo1_friend_requests_updated', { detail: detail || {} })) } catch {}
+}
+
+export function sendFriendRequest(fromUserId: string, toUserId: string): FriendRequest | null {
+  const from = normalizeAccountId(fromUserId)
+  const to = normalizeAccountId(toUserId)
+  if (!from || !to || from === to) return null
+  // Already friends — no request needed
+  if (getFriendIds(from).includes(to)) return null
+  const requests = readStoredList<FriendRequest>(FRIEND_REQUESTS_KEY)
+  // Already have a pending request
+  if (requests.some(r => normalizeAccountId(r.fromUserId) === from && normalizeAccountId(r.toUserId) === to)) return null
+  const req: FriendRequest = {
+    id: 'fr_' + Math.random().toString(36).slice(2, 10),
+    fromUserId: from,
+    toUserId: to,
+    sentAt: Date.now(),
+  }
+  requests.push(req)
+  writeStoredList(FRIEND_REQUESTS_KEY, requests)
+  emitFriendRequestsUpdated({ fromUserId: from, toUserId: to })
+  return req
+}
+
+export function acceptFriendRequest(userId: string, fromUserId: string) {
+  const to = normalizeAccountId(userId)
+  const from = normalizeAccountId(fromUserId)
+  if (!to || !from) return false
+  const requests = readStoredList<FriendRequest>(FRIEND_REQUESTS_KEY)
+  const idx = requests.findIndex(r => normalizeAccountId(r.fromUserId) === from && normalizeAccountId(r.toUserId) === to)
+  if (idx === -1) return false
+  requests.splice(idx, 1)
+  writeStoredList(FRIEND_REQUESTS_KEY, requests)
+  addFriendToProfile(to, from)
+  emitFriendRequestsUpdated({ fromUserId: from, toUserId: to, accepted: true })
+  return true
+}
+
+export function declineFriendRequest(userId: string, fromUserId: string) {
+  const to = normalizeAccountId(userId)
+  const from = normalizeAccountId(fromUserId)
+  if (!to || !from) return false
+  const requests = readStoredList<FriendRequest>(FRIEND_REQUESTS_KEY)
+  const filtered = requests.filter(r => !(normalizeAccountId(r.fromUserId) === from && normalizeAccountId(r.toUserId) === to))
+  writeStoredList(FRIEND_REQUESTS_KEY, filtered)
+  emitFriendRequestsUpdated({ fromUserId: from, toUserId: to, declined: true })
+  return true
+}
+
+export function getPendingFriendRequests(userId: string): FriendRequest[] {
+  const normalized = normalizeAccountId(userId)
+  if (!normalized) return []
+  return readStoredList<FriendRequest>(FRIEND_REQUESTS_KEY)
+    .filter(r => normalizeAccountId(r.toUserId) === normalized)
+}
+
+export function hasSentFriendRequest(fromUserId: string, toUserId: string): boolean {
+  const from = normalizeAccountId(fromUserId)
+  const to = normalizeAccountId(toUserId)
+  if (!from || !to) return false
+  return readStoredList<FriendRequest>(FRIEND_REQUESTS_KEY)
+    .some(r => normalizeAccountId(r.fromUserId) === from && normalizeAccountId(r.toUserId) === to)
+}
+
+export function isFriendWith(userId: string, targetId: string): boolean {
+  return getFriendIds(normalizeAccountId(userId)).includes(normalizeAccountId(targetId))
+}
+
+export function getSessionRecommendation(userId: string | null | undefined, event: any): SessionRecommendation {
+  if (!userId || !event) return { score: 0, badgeCount: 0, badge: '', reasons: [] }
+  const normalizedUserId = normalizeAccountId(userId)
+  const profile = getProfile(normalizedUserId)
+  if (!profile) return { score: 0, badgeCount: 0, badge: '', reasons: [] }
+
+  let score = 0
+  const reasons: string[] = []
+
+  const highRatedHosts = readStoredList<ParticipantReviewRecord>(PARTICIPANT_REVIEWS_KEY)
+    .filter(record => normalizeAccountId(record.userId) === normalizedUserId)
+    .filter(record => typeof record.hostRating === 'number' && Number(record.hostRating) >= 4)
+    .map(record => normalizeAccountId(record.hostId))
+  if (event.host && highRatedHosts.includes(normalizeAccountId(event.host))) {
+    score += 2
+    reasons.push('Highly rated host')
+  }
+
+  const friendIds = getFriendIds(normalizedUserId)
+  const participantIds = uniqueIds([
+    ...(Array.isArray(event.participants) ? event.participants : []),
+    ...(Array.isArray(event.applications) ? event.applications.filter((app: any) => app.status !== 'denied').map((app: any) => app.userId) : []),
+  ])
+  const friendsJoining = participantIds.filter(id => friendIds.includes(id))
+  if (friendsJoining.length > 0) {
+    score += Math.min(2, friendsJoining.length)
+    reasons.push(friendsJoining.length === 1 ? 'Friend participating' : `${friendsJoining.length} friends participating`)
+  }
+
+  const tagMatch = Array.isArray(profile.tags) && profile.tags.some(tag => String(tag).toLowerCase() === String(event.activity || '').toLowerCase())
+  if (tagMatch) {
+    score += 1
+    reasons.push('Matches your interests')
+  }
+
+  const eventVibes = Array.isArray(event.vibes) ? event.vibes.map((value: any) => String(value).toLowerCase()) : []
+  const vibeMatches = Array.isArray(profile.vibes) ? profile.vibes.filter(vibe => eventVibes.includes(String(vibe).toLowerCase())) : []
+  if (vibeMatches.length > 0) {
+    score += 1
+    reasons.push('Matches your vibes')
+  }
+
+  const badgeCount = score >= 4 ? 3 : score >= 2 ? 2 : score >= 1 ? 1 : 0
+  return {
+    score,
+    badgeCount,
+    badge: badgeCount > 0 ? '👍'.repeat(badgeCount) : '',
+    reasons,
+  }
+}
+
+function emitReviewsUpdated(detail?: any) {
+  try {
+    if (typeof window !== 'undefined' && window.dispatchEvent) {
+      window.dispatchEvent(new CustomEvent('demo1_reviews_updated', { detail }))
+    }
+  } catch {}
+}
+
+function readStoredList<T>(key: string): T[] {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed as T[] : []
+  } catch {
+    return []
+  }
+}
+
+function writeStoredList<T>(key: string, items: T[]) {
+  localStorage.setItem(key, JSON.stringify(items))
+}
+
+function normalizeSkillLevel(level?: string | null): SkillLevel | undefined {
+  if (level === 'No experience' || level === 'Beginner' || level === 'Intermediate' || level === 'Advanced') return level
+  return undefined
+}
+
+function getHostReviewRecords(hostId: string) {
+  const normalizedHostId = normalizeAccountId(hostId)
+  return readStoredList<ParticipantReviewRecord>(PARTICIPANT_REVIEWS_KEY)
+    .filter(record => normalizeAccountId(record.hostId) === normalizedHostId && typeof record.submittedAt === 'number' && typeof record.hostRating === 'number')
+}
+
+function recomputeHostRating(hostId: string) {
+  const normalizedHostId = normalizeAccountId(hostId)
+  if (!normalizedHostId) return
+  const reviews = getHostReviewRecords(normalizedHostId)
+  const profile = getProfile(normalizedHostId)
+  if (!profile) return
+  const nextRating = reviews.length
+    ? Math.round((reviews.reduce((sum, record) => sum + Number(record.hostRating || 0), 0) / reviews.length) * 10) / 10
+    : undefined
+  if (profile.rating === nextRating) return
+  saveProfile({ ...profile, rating: nextRating })
+}
+
+export function getEventEndTimestamp(event: any): number | null {
+  try {
+    if (!event?.date) return null
+    const start = new Date(`${event.date}T${event.startTime || '00:00'}`)
+    if (Number.isNaN(start.getTime())) return null
+    if (event.endTime) {
+      const end = new Date(`${event.date}T${event.endTime}`)
+      if (!Number.isNaN(end.getTime())) return end.getTime()
+    }
+    const durationMinutes = Number(event.duration || 0)
+    if (!Number.isNaN(durationMinutes) && durationMinutes > 0) return start.getTime() + durationMinutes * 60 * 1000
+    return start.getTime()
+  } catch {
+    return null
+  }
+}
+
+export function getEventStartTimestamp(event: any): number | null {
+  try {
+    if (!event?.date) return null
+    const start = new Date(`${event.date}T${event.startTime || '00:00'}`)
+    if (Number.isNaN(start.getTime())) return null
+    return start.getTime()
+  } catch {
+    return null
+  }
+}
+
+export function isEventWithinReviewWindow(event: any, now = Date.now()) {
+  const end = getEventEndTimestamp(event)
+  if (!end) return false
+  return now >= end && now <= end + REVIEW_WINDOW_MS
+}
+
+export function getParticipantReviewRecord(eventId: string, userId: string): ParticipantReviewRecord | null {
+  const normalizedUserId = normalizeAccountId(userId)
+  return readStoredList<ParticipantReviewRecord>(PARTICIPANT_REVIEWS_KEY)
+    .find(record => String(record.eventId) === String(eventId) && normalizeAccountId(record.userId) === normalizedUserId) || null
+}
+
+export function setParticipantCheckIn(eventId: string, userId: string, checkedIn: boolean) {
+  const normalizedUserId = normalizeAccountId(userId)
+  const records = readStoredList<ParticipantReviewRecord>(PARTICIPANT_REVIEWS_KEY)
+  const idx = records.findIndex(record => String(record.eventId) === String(eventId) && normalizeAccountId(record.userId) === normalizedUserId)
+  const existing = idx >= 0 ? records[idx] : null
+  const next: ParticipantReviewRecord = {
+    eventId,
+    userId: normalizedUserId,
+    hostId: existing?.hostId || (findEventById(eventId)?.host || ''),
+    checkedIn,
+    hostRating: existing?.hostRating,
+    feedback: existing?.feedback,
+    submittedAt: existing?.submittedAt,
+    reviewLaterUntil: existing?.reviewLaterUntil,
+    updatedAt: Date.now(),
+  }
+  if (idx >= 0) records[idx] = next
+  else records.push(next)
+  writeStoredList(PARTICIPANT_REVIEWS_KEY, records)
+  emitReviewsUpdated({ eventId, userId: normalizedUserId, type: 'checkin' })
+  return next
+}
+
+export function deferParticipantReview(eventId: string, userId: string, delayMs = REVIEW_LATER_MS) {
+  const normalizedUserId = normalizeAccountId(userId)
+  const records = readStoredList<ParticipantReviewRecord>(PARTICIPANT_REVIEWS_KEY)
+  const idx = records.findIndex(record => String(record.eventId) === String(eventId) && normalizeAccountId(record.userId) === normalizedUserId)
+  const existing = idx >= 0 ? records[idx] : null
+  const next: ParticipantReviewRecord = {
+    eventId,
+    userId: normalizedUserId,
+    hostId: existing?.hostId || (findEventById(eventId)?.host || ''),
+    checkedIn: existing?.checkedIn,
+    hostRating: existing?.hostRating,
+    feedback: existing?.feedback,
+    submittedAt: existing?.submittedAt,
+    reviewLaterUntil: Date.now() + delayMs,
+    updatedAt: Date.now(),
+  }
+  if (idx >= 0) records[idx] = next
+  else records.push(next)
+  writeStoredList(PARTICIPANT_REVIEWS_KEY, records)
+  emitReviewsUpdated({ eventId, userId: normalizedUserId, type: 'review_later' })
+  return next
+}
+
+export function saveParticipantReview(input: {
+  eventId: string
+  userId: string
+  hostId: string
+  hostRating: number
+  anonymousHostRating?: boolean
+  feedback?: string
+  checkedIn?: boolean
+}) {
+  const normalizedUserId = normalizeAccountId(input.userId)
+  const normalizedHostId = normalizeAccountId(input.hostId)
+  const safeRating = Math.max(1, Math.min(5, Number(input.hostRating || 0)))
+  if (!normalizedUserId || !normalizedHostId || !safeRating) return null
+  const records = readStoredList<ParticipantReviewRecord>(PARTICIPANT_REVIEWS_KEY)
+  const idx = records.findIndex(record => String(record.eventId) === String(input.eventId) && normalizeAccountId(record.userId) === normalizedUserId)
+  const existing = idx >= 0 ? records[idx] : null
+  const next: ParticipantReviewRecord = {
+    eventId: input.eventId,
+    userId: normalizedUserId,
+    hostId: normalizedHostId,
+    checkedIn: !!input.checkedIn,
+    hostRating: safeRating,
+    anonymousHostRating: !!input.anonymousHostRating,
+    feedback: input.feedback?.trim() || undefined,
+    submittedAt: Date.now(),
+    reviewLaterUntil: undefined,
+    updatedAt: Date.now(),
+  }
+  if (idx >= 0) records[idx] = { ...existing, ...next }
+  else records.push(next)
+  writeStoredList(PARTICIPANT_REVIEWS_KEY, records)
+  recomputeHostRating(normalizedHostId)
+  emitReviewsUpdated({ eventId: input.eventId, userId: normalizedUserId, type: 'participant_review' })
+  return next
+}
+
+export function needsParticipantReview(event: any, userId: string, now = Date.now()) {
+  const normalizedUserId = normalizeAccountId(userId)
+  if (!event || !normalizedUserId) return false
+  const isParticipant = Array.isArray(event.participants) && event.participants.map((entry: any) => normalizeAccountId(String(entry))).includes(normalizedUserId)
+  if (!isParticipant) return false
+  if (!isEventWithinReviewWindow(event, now)) return false
+  const review = getParticipantReviewRecord(event.id, normalizedUserId)
+  if (review?.submittedAt) return false
+  if (review?.reviewLaterUntil && review.reviewLaterUntil > now) return false
+  return true
+}
+
+export function getHostWrapUpRecord(eventId: string, hostId?: string): HostWrapUpRecord | null {
+  const normalizedHostId = hostId ? normalizeAccountId(hostId) : undefined
+  return readStoredList<HostWrapUpRecord>(HOST_WRAPUPS_KEY)
+    .find(record => String(record.eventId) === String(eventId) && (!normalizedHostId || normalizeAccountId(record.hostId) === normalizedHostId)) || null
+}
+
+export function saveHostWrapUp(input: {
+  eventId: string
+  hostId: string
+  activity?: string
+  participants: Array<{
+    userId: string
+    didAttend: boolean
+    currentSkillLevel?: SkillLevel
+    suggestedSkillLevel?: SkillLevel
+    feedback?: string
+  }>
+}) {
+  const normalizedHostId = normalizeAccountId(input.hostId)
+  if (!normalizedHostId) return null
+  const now = Date.now()
+  const wrapups = readStoredList<HostWrapUpRecord>(HOST_WRAPUPS_KEY)
+  const idx = wrapups.findIndex(record => String(record.eventId) === String(input.eventId) && normalizeAccountId(record.hostId) === normalizedHostId)
+  const next: HostWrapUpRecord = {
+    eventId: input.eventId,
+    hostId: normalizedHostId,
+    activity: input.activity,
+    submittedAt: now,
+    updatedAt: now,
+    participants: input.participants.map(entry => ({
+      userId: normalizeAccountId(entry.userId),
+      didAttend: !!entry.didAttend,
+      currentSkillLevel: normalizeSkillLevel(entry.currentSkillLevel),
+      suggestedSkillLevel: normalizeSkillLevel(entry.suggestedSkillLevel),
+      feedback: entry.feedback?.trim() || undefined,
+      updatedAt: now,
+    })),
+  }
+  if (idx >= 0) wrapups[idx] = next
+  else wrapups.push(next)
+  writeStoredList(HOST_WRAPUPS_KEY, wrapups)
+
+  const suggestions = readStoredList<SkillSuggestionRecord>(SKILL_SUGGESTIONS_KEY)
+  for (const participant of next.participants) {
+    const suggestionId = `skill_suggestion:${input.eventId}:${participant.userId}`
+    const existingSuggestionIndex = suggestions.findIndex(item => item.id === suggestionId)
+    const shouldSuggest = !!(participant.suggestedSkillLevel && participant.suggestedSkillLevel !== participant.currentSkillLevel)
+    if (!shouldSuggest) {
+      if (existingSuggestionIndex >= 0) suggestions.splice(existingSuggestionIndex, 1)
+      continue
+    }
+    const suggestion: SkillSuggestionRecord = {
+      id: suggestionId,
+      eventId: input.eventId,
+      userId: participant.userId,
+      hostId: normalizedHostId,
+      activity: String(input.activity || ''),
+      currentSkillLevel: participant.currentSkillLevel,
+      suggestedSkillLevel: participant.suggestedSkillLevel!,
+      feedback: participant.feedback,
+      createdAt: existingSuggestionIndex >= 0 ? suggestions[existingSuggestionIndex].createdAt : now,
+      updatedAt: now,
+      appliedAt: suggestions[existingSuggestionIndex]?.appliedAt,
+      reviewLaterUntil: suggestions[existingSuggestionIndex]?.reviewLaterUntil,
+    }
+    if (existingSuggestionIndex >= 0) suggestions[existingSuggestionIndex] = suggestion
+    else suggestions.push(suggestion)
+  }
+  writeStoredList(SKILL_SUGGESTIONS_KEY, suggestions)
+  emitReviewsUpdated({ eventId: input.eventId, hostId: normalizedHostId, type: 'host_wrapup' })
+  return next
+}
+
+export function needsHostWrapUp(event: any, userId: string, now = Date.now()) {
+  const normalizedUserId = normalizeAccountId(userId)
+  if (!event || !normalizedUserId) return false
+  if (normalizeAccountId(event.host || '') !== normalizedUserId) return false
+  if (!Array.isArray(event.participants) || event.participants.length === 0) return false
+  if (!isEventWithinReviewWindow(event, now)) return false
+  return !getHostWrapUpRecord(event.id, normalizedUserId)
+}
+
+export function getPendingSkillSuggestions(userId: string, eventId?: string, now = Date.now()) {
+  const normalizedUserId = normalizeAccountId(userId)
+  return readStoredList<SkillSuggestionRecord>(SKILL_SUGGESTIONS_KEY)
+    .filter(item => normalizeAccountId(item.userId) === normalizedUserId)
+    .filter(item => !eventId || String(item.eventId) === String(eventId))
+    .filter(item => !item.appliedAt)
+    .filter(item => !(item.reviewLaterUntil && item.reviewLaterUntil > now))
+}
+
+export function deferSkillSuggestion(suggestionId: string, userId: string, delayMs = REVIEW_LATER_MS) {
+  const normalizedUserId = normalizeAccountId(userId)
+  const suggestions = readStoredList<SkillSuggestionRecord>(SKILL_SUGGESTIONS_KEY)
+  const idx = suggestions.findIndex(item => item.id === suggestionId && normalizeAccountId(item.userId) === normalizedUserId)
+  if (idx === -1) return null
+  suggestions[idx] = { ...suggestions[idx], reviewLaterUntil: Date.now() + delayMs, updatedAt: Date.now() }
+  writeStoredList(SKILL_SUGGESTIONS_KEY, suggestions)
+  emitReviewsUpdated({ suggestionId, userId: normalizedUserId, type: 'skill_suggestion_later' })
+  return suggestions[idx]
+}
+
+export function applySkillSuggestion(suggestionId: string, userId: string) {
+  const normalizedUserId = normalizeAccountId(userId)
+  const suggestions = readStoredList<SkillSuggestionRecord>(SKILL_SUGGESTIONS_KEY)
+  const idx = suggestions.findIndex(item => item.id === suggestionId && normalizeAccountId(item.userId) === normalizedUserId)
+  if (idx === -1) return null
+  const suggestion = suggestions[idx]
+  if (!suggestion.activity || !suggestion.suggestedSkillLevel) return null
+  saveProfileSkill(normalizedUserId, suggestion.activity, suggestion.suggestedSkillLevel)
+  suggestions[idx] = { ...suggestion, appliedAt: Date.now(), updatedAt: Date.now(), reviewLaterUntil: undefined }
+  writeStoredList(SKILL_SUGGESTIONS_KEY, suggestions)
+  emitReviewsUpdated({ suggestionId, userId: normalizedUserId, type: 'skill_suggestion_applied' })
+  return suggestions[idx]
+}
+
+export function saveIncidentReport(input: {
+  eventId: string
+  userId: string
+  reporterRole: 'participant' | 'host'
+  category: string
+  details: string
+}) {
+  const reports = readStoredList<IncidentReportRecord>(INCIDENT_REPORTS_KEY)
+  const next: IncidentReportRecord = {
+    id: 'incident_' + Math.random().toString(36).slice(2, 10),
+    eventId: input.eventId,
+    userId: normalizeAccountId(input.userId),
+    reporterRole: input.reporterRole,
+    category: String(input.category || '').trim() || 'General concern',
+    details: String(input.details || '').trim(),
+    createdAt: Date.now(),
+  }
+  reports.push(next)
+  writeStoredList(INCIDENT_REPORTS_KEY, reports)
+  emitReviewsUpdated({ eventId: input.eventId, userId: next.userId, type: 'incident_report' })
+  return next
+}
+
+export function listIncidentReportsForHost(userId: string) {
+  const normalizedUserId = normalizeAccountId(userId)
+  if (!normalizedUserId) return []
+  const hostEventIds = new Set(
+    listEvents()
+      .filter(event => normalizeAccountId(event?.host || '') === normalizedUserId)
+      .map(event => String(event.id))
+  )
+  if (hostEventIds.size === 0) return []
+  return readStoredList<IncidentReportRecord>(INCIDENT_REPORTS_KEY)
+    .filter(report => hostEventIds.has(String(report.eventId)))
+    .sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0))
+}
+
+export function listPendingActions(userId: string, now = Date.now()): PendingAction[] {
+  const normalizedUserId = normalizeAccountId(userId)
+  if (!normalizedUserId) return []
+  const events = listEvents()
+  const actions: PendingAction[] = []
+
+  for (const event of events) {
+    const eventId = String(event?.id || '')
+    if (!eventId) continue
+    const title = String(event?.title || event?.activity || 'Session')
+    const eventStart = getEventStartTimestamp(event) || Number(event?.createdAt || now)
+    const eventEnd = getEventEndTimestamp(event) || eventStart
+    const isHost = normalizeAccountId(event?.host || '') === normalizedUserId
+    const isParticipant = Array.isArray(event?.participants) && event.participants.some((entry: any) => normalizeAccountId(String(entry)) === normalizedUserId)
+
+    if (isHost && Array.isArray(event?.applications)) {
+      const pendingApplications = event.applications.filter((entry: any) => entry?.status === 'pending' || entry?.status === 'waitlisted')
+      for (const application of pendingApplications) {
+        const applicantId = normalizeAccountId(String(application?.userId || ''))
+        const applicantLabel = applicantId ? getPublicIdentityLabel(applicantId) : 'Participant'
+        actions.push({
+          id: `approval:${eventId}:${applicantId || Math.random().toString(36).slice(2, 8)}`,
+          type: 'approval',
+          eventId,
+          title,
+          subtitle: `${application?.status === 'waitlisted' ? 'Waitlisted' : 'Pending'} application from ${applicantLabel}`,
+          waitedSince: Number(application?.appliedAt || eventStart),
+        })
+      }
+    }
+
+    if (isParticipant && needsParticipantReview(event, normalizedUserId, now)) {
+      actions.push({
+        id: `participantReview:${eventId}:${normalizedUserId}`,
+        type: 'participantReview',
+        eventId,
+        title,
+        subtitle: 'Leave your participant review',
+        waitedSince: eventEnd,
+      })
+    }
+
+    if (isHost && needsHostWrapUp(event, normalizedUserId, now)) {
+      actions.push({
+        id: `hostWrapUp:${eventId}:${normalizedUserId}`,
+        type: 'hostWrapUp',
+        eventId,
+        title,
+        subtitle: 'Complete host wrap-up and participant feedback',
+        waitedSince: eventEnd,
+      })
+    }
+
+    const suggestions = getPendingSkillSuggestions(normalizedUserId, eventId, now)
+    for (const suggestion of suggestions) {
+      actions.push({
+        id: `skillSuggestion:${suggestion.id}`,
+        type: 'skillSuggestion',
+        eventId,
+        title,
+        subtitle: `Review suggested level: ${suggestion.suggestedSkillLevel}`,
+        waitedSince: Number(suggestion.createdAt || suggestion.updatedAt || eventEnd),
+      })
+    }
+  }
+
+  for (const report of listIncidentReportsForHost(normalizedUserId)) {
+    const event = events.find(item => String(item.id) === String(report.eventId))
+    const title = String(event?.title || event?.activity || 'Session')
+    const reporterLabel = getPublicIdentityLabel(report.userId)
+    actions.push({
+      id: `incidentReport:${report.id}`,
+      type: 'incidentReport',
+      eventId: String(report.eventId),
+      title,
+      subtitle: `Incident report from ${reporterLabel}: ${report.category}`,
+      waitedSince: Number(report.createdAt || now),
+    })
+  }
+
+  _appendFriendRequestActions(normalizedUserId, actions)
+
+  return actions.sort((a, b) => a.waitedSince - b.waitedSince)
+}
+function _appendFriendRequestActions(userId: string, actions: PendingAction[]) {
+  const requests = getPendingFriendRequests(userId)
+  for (const req of requests) {
+    const label = getPublicIdentityLabel(req.fromUserId)
+    actions.push({
+      id: `friendRequest:${req.id}`,
+      type: 'friendRequest',
+      fromUserId: req.fromUserId,
+      title: 'Friend request',
+      subtitle: `${label} wants to connect`,
+      waitedSince: Number(req.sentAt || Date.now()),
+    })
+  }
 }
 
 export function listDraftSessions(userId?: string): StoredDraftSession[] {
@@ -1033,12 +2083,50 @@ export function listEvents(): EventItem[] {
   } catch { return [] }
 }
 
-export function saveProfileSkill(userId: string, tag: string, level: 'Beginner'|'Intermediate'|'Advanced') {
+export function saveProfileSkill(userId: string, tag: string, level: SkillLevel) {
   const prof = getProfile(userId)
   if (!prof) return
   if (!prof.skillChecks) prof.skillChecks = {}
   prof.skillChecks[tag] = level
   saveProfile(prof)
+}
+
+export function addProfileTagsAndVibes(userId: string, input: { tags?: string[]; vibes?: string[] }) {
+  const normalizedUserId = normalizeAccountId(userId)
+  if (!normalizedUserId) return null
+  const existing = getProfile(normalizedUserId)
+  const next: Profile = normalizeProfile({
+    ...(existing || {
+      id: normalizedUserId,
+      tags: [],
+      username: deriveUsernameFromId(normalizedUserId),
+      preferredName: deriveUsernameFromId(normalizedUserId),
+    }),
+    id: normalizedUserId,
+    tags: uniqueStrings([...(existing?.tags || []), ...((input.tags || []).map(value => String(value)))]),
+    vibes: uniqueStrings([...(existing?.vibes || []), ...((input.vibes || []).map(value => String(value)))]),
+  })
+  if (!next) return null
+  saveProfile(next)
+  return next
+}
+
+export function getSuggestedProfileInfo(userId: string, now = Date.now()) {
+  const normalizedUserId = normalizeAccountId(userId)
+  if (!normalizedUserId) return { tags: [], vibes: [] }
+  const profile = getProfile(normalizedUserId)
+  const existingTags = new Set((profile?.tags || []).map(value => String(value).trim().toLowerCase()))
+  const existingVibes = new Set((profile?.vibes || []).map(value => String(value).trim().toLowerCase()))
+  const relevantEvents = listEvents().filter(event => {
+    const end = getEventEndTimestamp(event)
+    if (!end || end > now) return false
+    const isHost = normalizeAccountId(event.host || '') === normalizedUserId
+    const isParticipant = Array.isArray(event.participants) && event.participants.some((entry: any) => normalizeAccountId(String(entry)) === normalizedUserId)
+    return isHost || isParticipant
+  })
+  const tags = uniqueStrings(relevantEvents.map(event => String(event.activity || '').trim())).filter(value => !existingTags.has(value.toLowerCase()))
+  const vibes = uniqueStrings(relevantEvents.flatMap(event => Array.isArray(event.vibes) ? event.vibes.map((value: any) => String(value).trim()) : [])).filter(value => !existingVibes.has(value.toLowerCase()))
+  return { tags, vibes }
 }
 
 export function applyToEvent(eventId: string, app: Application) {
@@ -1095,7 +2183,7 @@ export function applyToEvent(eventId: string, app: Application) {
   }
 }
 
-export function reviewPendingApplication(eventId: string, userId: string, decision: 'approve' | 'reject') {
+export function reviewPendingApplication(eventId: string, userId: string, decision: 'approve' | 'reject', feedback?: string) {
   try {
     const raw = localStorage.getItem(EVENTS_KEY)
     const arr: EventItem[] = raw ? JSON.parse(raw) : []
@@ -1116,7 +2204,12 @@ export function reviewPendingApplication(eventId: string, userId: string, decisi
     if (decision === 'approve') {
       const approvedCount = Array.isArray(ev.participants) ? ev.participants.length : 0
       if (ev.participantsMax && approvedCount >= ev.participantsMax) {
-        ev.applications[appIndex] = { ...application, status: 'waitlisted' }
+        ev.applications[appIndex] = {
+          ...application,
+          status: 'waitlisted',
+          feedback,
+          waitlistReason: 'capacity'
+        }
         resolution = 'waitlisted'
       } else {
         ev.participants = Array.isArray(ev.participants) ? ev.participants : []
@@ -1133,7 +2226,7 @@ export function reviewPendingApplication(eventId: string, userId: string, decisi
         resolution = 'approved'
       }
     } else {
-      ev.applications[appIndex] = { ...application, status: 'denied' }
+      ev.applications[appIndex] = { ...application, status: 'denied', feedback }
       resolution = 'denied'
     }
 
@@ -1218,12 +2311,111 @@ function emulateApproval(eventId: string, userId: string) {
 }
 
 
+// Generate mock reviews for past events (prototype helper)
+export function generateReviewsForPastEvents() {
+  const events = listEvents()
+  const now = Date.now()
+  const pastEvents = events.filter(event => {
+    const endTs = getEventEndTimestamp(event)
+    return endTs && endTs < now
+  })
+
+  const existingReviews = readStoredList<ParticipantReviewRecord>(PARTICIPANT_REVIEWS_KEY)
+  const existingWrapUps = readStoredList<HostWrapUpRecord>(HOST_WRAPUPS_KEY)
+  const existingReviewEventParticipantKeys = new Set(existingReviews.map(r => `${r.eventId}:${r.userId}`))
+  const existingWrapUpEventKeys = new Set(existingWrapUps.map(w => w.eventId))
+
+  const reviewBodies = [
+    'Great session, very welcoming host! Highly recommend.',
+    'Well organized and fun. Would definitely join again.',
+    'The host was very knowledgeable and supportive throughout.',
+    'Had a wonderful time. Great group of people!',
+    'Exactly what I was looking for. Thanks for organising!',
+    'Really enjoyed the activity. The host kept everything running smoothly.',
+    'Good experience overall. Will be back for more sessions.',
+    'Brilliant session! Everyone was friendly and encouraging.',
+    'Loved the energy. The host made all the difference.',
+    'Solid session. Very professional and well run.',
+    'Such a positive atmosphere. Felt welcome from the start.',
+    'Perfect for my skill level. The host gauged the group well.',
+  ]
+  const skillLevels: SkillLevel[] = ['No experience', 'Beginner', 'Intermediate', 'Advanced']
+  function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)] }
+
+  const newReviews: ParticipantReviewRecord[] = []
+  const newWrapUps: HostWrapUpRecord[] = []
+
+  for (const event of pastEvents) {
+    if ((event as any)?.skipAutoReviewGeneration) continue
+    const hostId = normalizeAccountId(event.host || '')
+    if (!hostId) continue
+    const participants: string[] = Array.isArray(event.participants)
+      ? (event.participants as any[]).map((p: any) => normalizeAccountId(String(p))).filter(Boolean)
+      : []
+    const endTs = getEventEndTimestamp(event) || now
+
+    // Participant reviews (participants rate host)
+    for (const participantId of participants) {
+      const key = `${event.id}:${participantId}`
+      if (existingReviewEventParticipantKeys.has(key)) continue
+      const submittedAt = endTs + Math.floor(Math.random() * 3 * 24 * 60 * 60 * 1000)
+      newReviews.push({
+        eventId: event.id,
+        userId: participantId,
+        hostId,
+        hostRating: Math.random() > 0.25 ? 5 : 4,
+        feedback: pick(reviewBodies),
+        anonymousHostRating: Math.random() > 0.7,
+        submittedAt,
+        updatedAt: submittedAt,
+      })
+    }
+
+    // Host wrap-up (host reviews participants)
+    if (!existingWrapUpEventKeys.has(event.id) && participants.length > 0) {
+      const submittedAt = endTs + Math.floor(Math.random() * 2 * 24 * 60 * 60 * 1000)
+      newWrapUps.push({
+        eventId: event.id,
+        hostId,
+        activity: (event as any).activity || (event as any).title,
+        submittedAt,
+        updatedAt: submittedAt,
+        participants: participants.map(pid => ({
+          userId: pid,
+          didAttend: Math.random() > 0.08,
+          suggestedSkillLevel: pick(skillLevels),
+          feedback: Math.random() > 0.45 ? pick(reviewBodies) : undefined,
+          updatedAt: submittedAt,
+        })),
+      })
+    }
+  }
+
+  if (newReviews.length > 0) {
+    const allReviews = [...existingReviews, ...newReviews]
+    localStorage.setItem(PARTICIPANT_REVIEWS_KEY, JSON.stringify(allReviews))
+    // recompute host ratings
+    const hostIds = new Set(newReviews.map(r => r.hostId))
+    hostIds.forEach(hid => recomputeHostRating(hid))
+  }
+  if (newWrapUps.length > 0) {
+    const allWrapUps = [...existingWrapUps, ...newWrapUps]
+    localStorage.setItem(HOST_WRAPUPS_KEY, JSON.stringify(allWrapUps))
+  }
+  if (newReviews.length > 0 || newWrapUps.length > 0) {
+    if (typeof window !== 'undefined' && window.dispatchEvent) {
+      window.dispatchEvent(new CustomEvent('demo1_reviews_updated'))
+    }
+  }
+  return { reviewCount: newReviews.length, wrapUpCount: newWrapUps.length }
+}
+
 // Seed a local prototype account/profile so the app can run without a backend.
-// Uses the same default email used in the UI as a sensible seed value.
+// Uses the same default public username used in the UI as a sensible seed value.
 try {
-  const seedId = 'username@une.edu.au'
+  const seedId = 'username'
   if (!accountExists(seedId)) {
-    registerAccount(seedId)
+    registerAccount(seedId, 'jamie@example.org')
   }
   if (!getProfile(seedId)) {
     saveProfile({

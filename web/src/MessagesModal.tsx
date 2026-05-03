@@ -10,6 +10,7 @@ import {
   markMessageThreadRead,
   sendMessageToThread,
 } from './AuthService'
+import { XIcon, ArrowLeftIcon } from './Icons'
 
 export type MessageTarget =
   | { type: 'inbox' }
@@ -31,6 +32,39 @@ function formatTime(ts: number) {
   }
 }
 
+function getInitials(label: string) {
+  const cleaned = String(label || '').trim()
+  if (!cleaned) return '?'
+  const parts = cleaned.split(/\s+/).filter(Boolean)
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[1][0]).toUpperCase()
+}
+
+function Avatar({ label, isGroup, size = 36 }: { label: string; isGroup?: boolean; size?: number }) {
+  const initials = getInitials(label)
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: isGroup ? 12 : 999,
+        background: isGroup ? 'linear-gradient(135deg, rgba(var(--secondary-rgb),0.16), rgba(var(--accent-rgb),0.16))' : 'linear-gradient(135deg, var(--accent), var(--secondary))',
+        color: isGroup ? 'var(--secondary)' : 'white',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: 800,
+        fontSize: size >= 36 ? 13 : 11,
+        flex: '0 0 auto',
+        boxShadow: isGroup ? 'inset 0 0 0 1px rgba(var(--secondary-rgb),0.12)' : '0 6px 18px rgba(var(--secondary-rgb),0.18)',
+      }}
+    >
+      {initials}
+    </div>
+  )
+}
+
 export default function MessagesModal({ open, userId, initialTarget, onClose }: Props) {
   const [threads, setThreads] = React.useState<MessageThreadSummary[]>([])
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
@@ -49,20 +83,20 @@ export default function MessagesModal({ open, userId, initialTarget, onClose }: 
     if (!target || target.type === 'inbox') {
       const summaries = getAccessibleMessageThreads(userId)
       setThreads(summaries)
-      setSelectedId(current => current || summaries[0]?.id || null)
+      setSelectedId(null)
       return
     }
     if (target.type === 'direct') {
       const thread = ensureDirectMessageThread(userId, target.otherUserId)
       const summaries = getAccessibleMessageThreads(userId)
       setThreads(summaries)
-      setSelectedId(thread?.id || summaries[0]?.id || null)
+      setSelectedId(thread?.id || null)
       return
     }
     const thread = ensureEventMessageThread(target.eventId, userId)
     const summaries = getAccessibleMessageThreads(userId)
     setThreads(summaries)
-    setSelectedId(thread?.id || summaries[0]?.id || null)
+    setSelectedId(thread?.id || null)
   }, [userId])
 
   React.useEffect(() => {
@@ -138,20 +172,21 @@ export default function MessagesModal({ open, userId, initialTarget, onClose }: 
 
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true">
-      <div className="modal" style={{ maxWidth: 920 }}>
+      <div className="modal">
         <div className="modal-header">
           <h3 style={{ margin: 0 }}>Messages</h3>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">✕</button>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close"><XIcon size={16} /></button>
         </div>
-        <div className="modal-body" style={{ padding: 0 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 300px) 1fr', minHeight: 520 }}>
-            <div style={{ borderRight: '1px solid #e5e7eb', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="modal-body" style={{ padding: 0, display: 'flex', flexDirection: 'column', minHeight: 520 }}>
+          {!selectedId ? (
+            // Inbox view - full width
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, overflow: 'auto', flex: 1 }}>
               <div style={{ fontSize: 13, color: '#6b7280', fontWeight: 700, padding: '4px 4px 8px' }}>Inbox</div>
               {threads.length === 0 ? (
                 <div style={{ color: '#9ca3af', fontSize: 14, padding: 8 }}>No messages yet. Approved event chats and direct messages will appear here.</div>
               ) : (
                 threads.map(thread => {
-                  const selected = thread.id === selectedId
+                  const threadLabel = thread.type === 'event' ? thread.title : (thread.otherUserId ? getPublicIdentityLabel(thread.otherUserId) : thread.title)
                   return (
                     <button
                       key={thread.id}
@@ -159,53 +194,84 @@ export default function MessagesModal({ open, userId, initialTarget, onClose }: 
                       onClick={() => handleSelect(thread)}
                       style={{
                         textAlign: 'left',
-                        border: selected ? '1px solid rgba(37,99,235,0.18)' : '1px solid transparent',
-                        background: selected ? 'rgba(37,99,235,0.06)' : 'white',
+                        border: '1px solid transparent',
+                        background: 'white',
                         borderRadius: 12,
                         padding: 10,
                         cursor: 'pointer',
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                        <div style={{ fontWeight: 700, fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{thread.title}</div>
-                        {thread.unreadCount > 0 && (
-                          <span style={{ minWidth: 20, height: 20, borderRadius: 999, background: '#2563eb', color: 'white', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, padding: '0 6px' }}>
-                            {thread.unreadCount}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ marginTop: 4, fontSize: 12, color: '#6b7280', minHeight: 18, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {thread.type === 'event' ? 'Event group chat' : 'Direct message'}
-                      </div>
-                      <div style={{ marginTop: 6, fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {thread.subtitle || 'No messages yet'}
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                        <Avatar label={threadLabel} isGroup={thread.type === 'event'} size={36} />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                            <div style={{ fontWeight: 700, fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{thread.title}</div>
+                            {thread.unreadCount > 0 && (
+                              <span style={{ minWidth: 20, height: 20, borderRadius: 999, background: 'var(--secondary)', color: 'white', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, padding: '0 6px' }}>
+                                {thread.unreadCount}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ marginTop: 4, fontSize: 12, color: '#6b7280', minHeight: 18, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {thread.type === 'event' ? 'Event group chat' : 'Direct message'}
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {thread.subtitle || 'No messages yet'}
+                          </div>
+                        </div>
                       </div>
                     </button>
                   )
                 })
               )}
             </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-              <div style={{ padding: '16px 18px', borderBottom: '1px solid #e5e7eb' }}>
-                <div style={{ fontWeight: 700, fontSize: 16 }}>{selectedTitle}</div>
-                <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>{selectedSubtitle}</div>
+          ) : (
+            // Chat view - full width with back button
+            <>
+              <div style={{ padding: '16px 18px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(null)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '4px 8px',
+                    cursor: 'pointer',
+                    color: 'var(--secondary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 16,
+                    fontWeight: 700,
+                    minWidth: 24,
+                  }}
+                  aria-label="Back to inbox"
+                >
+                  <ArrowLeftIcon size={18} />
+                </button>
+                <Avatar label={selectedTitle} isGroup={selectedSummary?.type === 'event'} size={42} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 16 }}>{selectedTitle}</div>
+                  <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>{selectedSubtitle}</div>
+                </div>
               </div>
 
-              <div style={{ flex: 1, minHeight: 280, maxHeight: 360, overflow: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 10, background: '#f8fafc' }}>
-                {!selectedSummary ? (
-                  <div style={{ color: '#9ca3af' }}>Select a conversation to start messaging.</div>
-                ) : !selectedThread || selectedThread.messages.length === 0 ? (
+              <div style={{ flex: 1, minHeight: 280, overflow: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 10, background: '#f8fafc' }}>
+                {!selectedThread || selectedThread.messages.length === 0 ? (
                   <div style={{ color: '#9ca3af' }}>No messages yet. Start the conversation below.</div>
                 ) : (
                   selectedThread.messages.map(message => {
                     const mine = message.senderId === userId
+                    const senderLabel = getPublicIdentityLabel(message.senderId)
                     return (
                       <div key={message.id} style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-                        <div style={{ maxWidth: '80%', background: mine ? 'linear-gradient(135deg, #fb923c, #2563eb)' : 'white', color: mine ? 'white' : '#0f1720', padding: '10px 12px', borderRadius: 14, boxShadow: mine ? '0 6px 18px rgba(37,99,235,0.18)' : '0 2px 8px rgba(15,23,32,0.06)' }}>
-                          {!mine && <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>{getPublicIdentityLabel(message.senderId)}</div>}
-                          <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 14 }}>{message.body}</div>
-                          <div style={{ fontSize: 11, opacity: 0.8, marginTop: 6 }}>{formatTime(message.sentAt)}</div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexDirection: mine ? 'row-reverse' : 'row', maxWidth: '84%' }}>
+                          <Avatar label={senderLabel} size={30} />
+                          <div style={{ maxWidth: '100%', background: mine ? 'linear-gradient(135deg, var(--accent), var(--secondary))' : 'white', color: mine ? 'white' : '#0f1720', padding: '10px 12px', borderRadius: 14, boxShadow: mine ? '0 6px 18px rgba(var(--secondary-rgb),0.18)' : '0 2px 8px rgba(15,23,32,0.06)' }}>
+                            {!mine && <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>{senderLabel}</div>}
+                            <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 14 }}>{message.body}</div>
+                            <div style={{ fontSize: 11, opacity: 0.8, marginTop: 6 }}>{formatTime(message.sentAt)}</div>
+                          </div>
                         </div>
                       </div>
                     )
@@ -213,7 +279,7 @@ export default function MessagesModal({ open, userId, initialTarget, onClose }: 
                 )}
               </div>
 
-              <div style={{ padding: 16, borderTop: '1px solid #e5e7eb', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+              <div style={{ padding: 16, borderTop: '1px solid #e5e7eb', display: 'flex', gap: 8, alignItems: 'flex-end', flexShrink: 0 }}>
                 <textarea
                   className="input"
                   rows={3}
@@ -227,8 +293,8 @@ export default function MessagesModal({ open, userId, initialTarget, onClose }: 
                   Send
                 </button>
               </div>
-            </div>
-          </div>
+            </>
+          )}
         </div>
       </div>
     </div>

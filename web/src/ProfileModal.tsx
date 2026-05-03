@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
-import Switch from './Switch'
-import { getSuggestedTags, saveProfile, suggestTag, getProfile, getPublicUsername, getPreferredName } from './AuthService'
+import { getSuggestedTags, saveProfile, suggestTag, getProfile, getPublicUsername, getPreferredName, getProfileSectionVisibility, ProfileSectionKey, ProfileSectionVisibility } from './AuthService'
+import { XIcon, ArrowRightIcon, ArrowLeftIcon, CheckIcon } from './Icons'
 
 type Props = {
   open: boolean
@@ -21,6 +21,11 @@ const DEFAULT_TAGS = [
 export const VIBES_TAGS = [
   'Child Supervision','Child Participation','Casual','Social','Competitive','LGBTIQ+','Mens','Womens','U25s','Retirees','Mums','Dads','Aboriginal/Torres Strait Islander','18+'
 ]
+
+const INTEREST_CAROUSEL_SIZE = 12
+const INTEREST_CAROUSEL_STEP = 6
+const VIBE_CAROUSEL_SIZE = 12
+const VIBE_CAROUSEL_STEP = 4
 
 // Large explicit list of sports, hobbies and activities (no generated "Activity N" entries)
 export const LARGE_TAGS = [
@@ -86,25 +91,32 @@ export const LARGE_TAGS = [
       'yoga','pilates','tai chi','dance','gym','weightlifting','powerlifting','crossfit','calisthenics','parkour','gymnastics',
       'skateboarding','rollerblading','scootering','motorsports','karting','fishing','hunting','shooting','archery'
     ])
-function sample<T>(arr: T[], k: number) {
-  const res: T[] = []
-  const used = new Set<number>()
-  const n = arr.length
-  while (res.length < k && used.size < n) {
-    const idx = Math.floor(Math.random() * n)
-    if (!used.has(idx)) {
-      used.add(idx)
-      res.push(arr[idx])
-    }
-  }
-  return res
+
+function getWrappedItems<T>(arr: T[], start: number, count: number) {
+  if (arr.length === 0) return []
+  if (arr.length <= count) return arr
+  const offset = ((start % arr.length) + arr.length) % arr.length
+  return Array.from({ length: count }, (_, index) => arr[(offset + index) % arr.length])
 }
 
-export default function ProfileModal({ open, onClose, userId, initialStep }: EditorProps) {
-  const requiredFlow = (arguments[0] as any)?.requiredFlow ?? false
-  const [query, setQuery] = useState('')
+type EditablePrivacy = Record<ProfileSectionKey, ProfileSectionVisibility>
+
+const DEFAULT_PRIVACY: EditablePrivacy = {
+  interests: 'public',
+  vibes: 'public',
+  about: 'private',
+  demographic: 'private',
+  contact: 'private',
+  hostHistory: 'public',
+  participantHistory: 'private',
+  reviews: 'public',
+}
+
+export default function ProfileModal({ open, onClose, userId, initialStep, requiredFlow = false }: EditorProps) {
+  const [interestQuery, setInterestQuery] = useState('')
+  const [vibeQuery, setVibeQuery] = useState('')
   const [selected, setSelected] = useState<string[]>([])
-  const [step, setStep] = useState<number>(1)
+  const [step, setStep] = useState<number>(0)
   const [about, setAbout] = useState('')
   const [aboutPublic, setAboutPublic] = useState<boolean>(true)
   const [gender, setGender] = useState<string>('Prefer not to say')
@@ -112,6 +124,9 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
   const [preferredName, setPreferredName] = useState<string>('')
   const [contactEmail, setContactEmail] = useState<string>('')
   const [contactPhone, setContactPhone] = useState<string>('')
+  const [yearOfBirth, setYearOfBirth] = useState<string>('')
+  const [photoDataUrl, setPhotoDataUrl] = useState<string>('')
+  const [privacy, setPrivacy] = useState<EditablePrivacy>(DEFAULT_PRIVACY)
   const [sharePreferredNameWithParticipants, setSharePreferredNameWithParticipants] = useState<boolean>(false)
   // password change fields
   const [currentPassword, setCurrentPassword] = useState<string>('')
@@ -120,16 +135,47 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
   const [toast, setToast] = useState<string | null>(null)
   const suggested = useMemo(() => getSuggestedTags(), [])
   const singleMode = typeof initialStep === 'number'
+  const modalTitle = requiredFlow ? 'Get started' : singleMode ? 'Edit' : 'Edit profile'
+  const [interestCarouselIndex, setInterestCarouselIndex] = useState(0)
+  const [vibeCarouselIndex, setVibeCarouselIndex] = useState(0)
 
   const largeList = useMemo(() => LARGE_TAGS, [])
-
-  // initial displayed tags: 10 random picks
-  const [displayedTags, setDisplayedTags] = useState<string[]>(() => sample(largeList, 10))
   const [filterMode, setFilterMode] = useState<'both'|'sports'|'no-sports'>('both')
 
   // vibes state
-  const [displayedVibes, setDisplayedVibes] = useState<string[]>(() => sample(VIBES_TAGS, 10))
   const [selectedVibes, setSelectedVibes] = useState<string[]>([])
+  const orderedVibes = useMemo(() => [...VIBES_TAGS], [])
+
+  const renderPrivacyButtons = (section: ProfileSectionKey, options?: ProfileSectionVisibility[]) => {
+    const allowedOptions = options || (section === 'demographic' || section === 'contact' ? ['private', 'hosts'] : ['private', 'hosts', 'public'])
+    const labels: Record<ProfileSectionVisibility, string> = {
+      private: 'Private',
+      hosts: 'Hosts',
+      public: 'Public',
+    }
+    return (
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+        {allowedOptions.map(option => (
+          <button
+            key={`${section}_${option}`}
+            type="button"
+              className={`btn-pill ${privacy[section] === option ? 'btn' : 'btn ghost'}`}
+            onClick={() => setPrivacy(current => ({ ...current, [section]: option }))}
+          >
+            {labels[option]}
+          </button>
+        ))}
+      </div>
+    )
+  }
+
+  const scrollVibes = (direction: -1 | 1) => {
+    setVibeCarouselIndex(current => current + direction * VIBE_CAROUSEL_STEP)
+  }
+
+  const scrollInterests = (direction: -1 | 1) => {
+    setInterestCarouselIndex(current => current + direction * INTEREST_CAROUSEL_STEP)
+  }
 
   const buildProfile = (overrides?: Record<string, any>) => {
     const existing = getProfile(userId)
@@ -141,72 +187,75 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
       tags: selected,
       vibes: selectedVibes,
       about,
-      aboutPublic,
+      aboutPublic: privacy.about === 'public',
       gender,
       email: contactEmail || existing?.email || undefined,
       phone: contactPhone || existing?.phone || undefined,
+      yearOfBirth: yearOfBirth || existing?.yearOfBirth || undefined,
+      photoDataUrl: photoDataUrl || existing?.photoDataUrl || existing?.avatarDataUrl || existing?.avatarUrl || undefined,
+      avatarDataUrl: photoDataUrl || existing?.avatarDataUrl || existing?.photoDataUrl || existing?.avatarUrl || undefined,
+      privacy,
       sharePreferredNameWithParticipants,
       completedAt: existing?.completedAt,
       ...overrides,
     }
   }
 
-  // Ensure displayedTags always contains up to 10 items matching current filter and excluding selected
-  function fillDisplayedTags(current: string[], selectedSet: Set<string>, mode?: 'both'|'sports'|'no-sports') {
-    const effectiveMode = mode ?? filterMode
-    const cur = current.filter(t => !selectedSet.has(t))
-    const need = 10 - cur.length
-    if (need <= 0) return cur.slice(0, 10)
-
-    let pool = largeList.filter(t => !selectedSet.has(t) && !cur.includes(t))
-    if (effectiveMode === 'sports') pool = pool.filter(t => SPORTS.has(t.toLowerCase()))
-    else if (effectiveMode === 'no-sports') pool = pool.filter(t => !SPORTS.has(t.toLowerCase()))
-
-    const add = sample(pool, need)
-    return [...cur, ...add]
-  }
 
   // load existing profile when opening for edit
   React.useEffect(() => {
     if (!open) return
     // if caller requested a particular step (e.g. edit about/gender/interests), set it
-    if (initialStep && initialStep >= 1 && initialStep <= 6) {
+    if (initialStep && initialStep >= 1 && initialStep <= 7) {
       setStep(initialStep)
-    } else {
+    } else if (requiredFlow) {
       setStep(1)
+    } else {
+      setStep(0) // show section menu
     }
     try {
       const profile = getProfile(userId)
         if (profile) {
         setSelected(profile.tags ?? [])
         setAbout(profile.about ?? '')
-        setAboutPublic(profile.aboutPublic === undefined ? true : !!profile.aboutPublic)
         setGender(profile.gender ?? 'Prefer not to say')
         setPreferredName(profile.preferredName ?? profile.displayName ?? getPreferredName(userId, profile))
         setContactEmail(profile.email ?? '')
         setContactPhone(profile.phone ?? '')
-        setSharePreferredNameWithParticipants(!!profile.sharePreferredNameWithParticipants)
-        // refresh displayed tags to exclude already-selected, and ensure 10 items
-        setDisplayedTags(() => fillDisplayedTags([], new Set(profile.tags ?? []), filterMode))
-        // load vibes if present
-        setSelectedVibes(profile.vibes ?? [])
-        setDisplayedVibes(() => {
-          const sel = new Set(profile.vibes ?? [])
-          const pool = VIBES_TAGS.filter(t => !sel.has(t))
-          return sample(pool, 10)
+        setYearOfBirth(profile.yearOfBirth ?? '')
+        setPhotoDataUrl(profile.photoDataUrl ?? profile.avatarDataUrl ?? profile.avatarUrl ?? '')
+        setPrivacy({
+          interests: getProfileSectionVisibility(profile, 'interests'),
+          vibes: getProfileSectionVisibility(profile, 'vibes'),
+          about: getProfileSectionVisibility(profile, 'about'),
+          demographic: getProfileSectionVisibility(profile, 'demographic'),
+          contact: getProfileSectionVisibility(profile, 'contact'),
+          hostHistory: getProfileSectionVisibility(profile, 'hostHistory'),
+          participantHistory: getProfileSectionVisibility(profile, 'participantHistory'),
+          reviews: getProfileSectionVisibility(profile, 'reviews'),
         })
+        setSharePreferredNameWithParticipants(!!profile.sharePreferredNameWithParticipants)
+        setSelectedVibes(profile.vibes ?? [])
+        setInterestQuery('')
+        setVibeQuery('')
+        setInterestCarouselIndex(0)
+        setVibeCarouselIndex(0)
         } else {
-        // new open: reshuffle displayed tags and ensure 10 items
-        setDisplayedTags(() => fillDisplayedTags([], new Set(), filterMode))
-        setDisplayedVibes(() => sample(VIBES_TAGS, 10))
         setSelected([])
         setAbout('')
-        setAboutPublic(true)
           setGender('Prefer not to say')
           setPreferredName('')
           setContactEmail('')
           setContactPhone('')
+          setYearOfBirth('')
+          setPhotoDataUrl('')
+          setPrivacy(DEFAULT_PRIVACY)
           setSharePreferredNameWithParticipants(false)
+          setSelectedVibes([])
+          setInterestQuery('')
+          setVibeQuery('')
+          setInterestCarouselIndex(0)
+          setVibeCarouselIndex(0)
           // if this is a required onboarding flow, start at step 1 and prevent skipping
           if (requiredFlow) setStep(1)
       }
@@ -221,22 +270,48 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
     return merged
   }, [largeList, suggested])
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const base = !q ? allTags.filter(t => !selected.includes(t)) : allTags.filter(t => !selected.includes(t) && t.toLowerCase().includes(q))
+  const availableInterests = useMemo(() => {
+    const base = allTags.filter(t => !selected.includes(t))
     // apply filterMode
     if (filterMode === 'both') return base
     if (filterMode === 'sports') return base.filter(t => SPORTS.has(t.toLowerCase()))
     return base.filter(t => !SPORTS.has(t.toLowerCase()))
-  }, [query, allTags, selected, filterMode])
+  }, [allTags, selected, filterMode])
+
+  const filteredInterests = useMemo(() => {
+    const q = interestQuery.trim().toLowerCase()
+    if (!q) return availableInterests
+    return availableInterests.filter(tag => tag.toLowerCase().includes(q))
+  }, [interestQuery, availableInterests])
+
+  const visibleInterestSuggestions = useMemo(
+    () => getWrappedItems(availableInterests, interestCarouselIndex, INTEREST_CAROUSEL_SIZE),
+    [availableInterests, interestCarouselIndex],
+  )
+
+  const filteredVibes = useMemo(() => {
+    const q = vibeQuery.trim().toLowerCase()
+    if (!q) return orderedVibes
+    return orderedVibes.filter(vibe => vibe.toLowerCase().includes(q))
+  }, [orderedVibes, vibeQuery])
+
+  const visibleVibeSuggestions = useMemo(
+    () => getWrappedItems(filteredVibes, vibeCarouselIndex, VIBE_CAROUSEL_SIZE),
+    [filteredVibes, vibeCarouselIndex],
+  )
+
+  React.useEffect(() => {
+    setInterestCarouselIndex(current => (availableInterests.length ? ((current % availableInterests.length) + availableInterests.length) % availableInterests.length : 0))
+  }, [availableInterests.length])
+
+  React.useEffect(() => {
+    setVibeCarouselIndex(current => (filteredVibes.length ? ((current % filteredVibes.length) + filteredVibes.length) % filteredVibes.length : 0))
+  }, [filteredVibes.length])
 
   const toggle = (tag: string) => {
     setSelected(prev => {
       const selecting = !prev.includes(tag)
       const next = selecting ? [...prev, tag] : prev.filter(x => x !== tag)
-
-      // update displayedTags to remove the tag and refill to 10 according to filter
-      setDisplayedTags(dt => fillDisplayedTags(dt.filter(t => t !== tag), new Set(next), filterMode))
 
       // persist to profile immediately (add or remove)
       try {
@@ -257,14 +332,12 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
   }
 
   const handleSuggest = () => {
-    const value = query.trim()
+    const value = interestQuery.trim()
     if (!value) return
     // add suggestion and select it
     suggestTag(value)
     setSelected(prev => prev.includes(value) ? prev : [...prev, value])
-    setQuery('')
-    // remove from displayed
-    setDisplayedTags(dt => dt.filter(t => t !== value))
+    setInterestQuery('')
     // persist suggestion
     try {
       if (userId) {
@@ -279,10 +352,6 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
     }
   }
 
-  const refreshSuggestions = () => {
-    setDisplayedTags(() => fillDisplayedTags([], new Set(selected), filterMode))
-  }
-
   const isProfileCompleted = () => {
     const p = getProfile(userId)
     return !!(p && p.completedAt)
@@ -290,8 +359,8 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
 
   // Validation for each step. About may be empty and 'Prefer not to say' is allowed for gender.
   const isStepValid = (s: number) => {
-    if (s === 1) return selected.length > 0
-    if (s === 2) return selectedVibes.length > 0
+    if (s === 1) return true
+    if (s === 2) return true
     // About page may be empty according to requirements
     if (s === 3) return true
     // Allow "Prefer not to say" as a valid choice for gender
@@ -310,14 +379,6 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
     setSelectedVibes(prev => {
       const selecting = !prev.includes(tag)
       const next = selecting ? [...prev, tag] : prev.filter(x => x !== tag)
-      // remove from displayedVibes and refill
-      setDisplayedVibes(dv => {
-        const cur = dv.filter(t => t !== tag)
-        const need = 10 - cur.length
-        if (need <= 0) return cur.slice(0, 10)
-        const pool = VIBES_TAGS.filter(t => !next.includes(t) && !cur.includes(t))
-        return [...cur, ...sample(pool, need)]
-      })
       // persist vibes immediately
       try {
         if (userId) {
@@ -386,6 +447,8 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
     onClose()
   }
 
+  const handleBackToMenu = () => setStep(0)
+
   // keyboard: close on Escape
   React.useEffect(() => {
     if (!open) return
@@ -398,101 +461,189 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
 
   if (!open) return null
 
+  // InfoTip component (inline for simplicity)
+  const InfoTip = ({ text }: { text: string }) => {
+    const [show, setShow] = React.useState(false)
+    return (
+      <span style={{ position: 'relative', display: 'inline-flex', verticalAlign: 'middle', marginLeft: 4 }}>
+        <button type="button" onClick={() => setShow(s => !s)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#9ca3af', fontSize: 14, lineHeight: 1 }} aria-label="More info">ℹ</button>
+        {show && (
+          <div style={{ position: 'absolute', bottom: '120%', left: 0, zIndex: 200, background: '#1f2937', color: 'white', padding: '8px 12px', borderRadius: 10, fontSize: 12, width: 220, whiteSpace: 'normal', boxShadow: '0 8px 24px rgba(2,6,23,0.25)', lineHeight: 1.5 }} role="tooltip">
+            {text}
+            <button onClick={() => setShow(false)} style={{ position: 'absolute', top: 4, right: 6, background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, lineHeight: 1 }}><XIcon size={12} /></button>
+          </div>
+        )}
+      </span>
+    )
+  }
+
+  // Section menu (step 0)
+  const renderSectionMenu = () => (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <p style={{ marginTop: 0, color: '#6b7280', fontSize: 13 }}>Select a section to edit.</p>
+      {([
+        { step: 1, icon: '⚽', label: 'Interests & sports', desc: 'Sports, hobbies and activities you enjoy' },
+        { step: 2, icon: '✨', label: 'Vibes', desc: 'The kind of sessions and people you enjoy' },
+        { step: 3, icon: '📝', label: 'About me', desc: 'A short bio others can read on your profile' },
+        { step: 4, icon: '👤', label: 'Demographics', desc: 'Gender and year of birth (private by default)' },
+        { step: 5, icon: '🪪', label: 'Identity & contact', desc: 'Preferred name, profile photo, email, phone' },
+        { step: 7, icon: '🔒', label: 'Privacy settings', desc: 'Control who sees each section of your profile' },
+        { step: 6, icon: '🔑', label: 'Change password', desc: 'Update your local account password' },
+      ] as Array<{ step: number; icon: string; label: string; desc: string }>).map(item => (
+        <button key={item.step} type="button" onClick={() => setStep(item.step)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 16, border: '1px solid rgba(15,23,32,0.1)', background: 'white', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+          <span style={{ fontSize: 22, flexShrink: 0 }}>{item.icon}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{item.label}</div>
+            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{item.desc}</div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: '#9ca3af' }}><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      ))}
+      <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          className="btn ghost"
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent('demo1_open_profile', { detail: { id: userId } }))
+            onClose()
+          }}
+        >
+          View profile
+        </button>
+        <button type="button" className="btn" onClick={onClose}>Done</button>
+      </div>
+    </div>
+  )
+
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true">
       <div className="modal">
         <div className="modal-header">
-          <h3>Profile setup</h3>
-          <button type="button" className="modal-close" onClick={handleClose} aria-label="Close">✕</button>
+          <h3>{modalTitle}</h3>
+          <button type="button" className="modal-close" onClick={handleClose} aria-label="Close"><XIcon size={16} /></button>
         </div>
 
         <div className="modal-body">
 
-          {step === 1 ? (
+          {step === 0 ? renderSectionMenu() : step === 1 ? (
             <>
               <p style={{ marginTop: 0 }}>
-                Add your favorite sports and hobbies to help the system recommend activities you might like in your area. You can always come back later and update this.
+                Select at least one interest if you can, and add as many as feel useful. You can continue even if you want to skip this for now.
               </p>
 
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <input
                     className="input"
                     placeholder="Search tags"
-                    value={query}
-                    onChange={e => setQuery(e.target.value)}
+                    value={interestQuery}
+                    onChange={e => setInterestQuery(e.target.value)}
                     onKeyDown={e => {
                       if (e.key === 'Enter') {
                         e.preventDefault()
-                        const v = query.trim()
+                        const v = interestQuery.trim()
                         if (!v) return
-                        // if query matches an existing tag (case-insensitive), select it
                         const match = allTags.find(t => t.toLowerCase() === v.toLowerCase())
                         if (match) {
                           toggle(match)
                         } else {
-                          // otherwise suggest new tag
                           handleSuggest()
                         }
                       }
                     }}
                   />
-                  <button type="button" className="btn ghost" onClick={refreshSuggestions}>Refresh</button>
                 </div>
 
-              {/* Filter controls: sports only / both / hide sports */}
+              {/* Filter controls */}
               <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                <button type="button" onClick={() => { const m: 'both'|'sports'|'no-sports' = 'both'; setFilterMode(m); setDisplayedTags(() => fillDisplayedTags([], new Set(selected), m)); }} className={filterMode === 'both' ? 'btn' : 'btn ghost'}>All</button>
-                <button type="button" onClick={() => { const m: 'both'|'sports'|'no-sports' = 'sports'; setFilterMode(m); setDisplayedTags(() => fillDisplayedTags([], new Set(selected), m)); }} className={filterMode === 'sports' ? 'btn' : 'btn ghost'}>Sports only</button>
-                <button type="button" onClick={() => { const m: 'both'|'sports'|'no-sports' = 'no-sports'; setFilterMode(m); setDisplayedTags(() => fillDisplayedTags([], new Set(selected), m)); }} className={filterMode === 'no-sports' ? 'btn' : 'btn ghost'}>Hide sports</button>
+                <button type="button" onClick={() => { setFilterMode('both'); setInterestCarouselIndex(0) }} className={filterMode === 'both' ? 'btn' : 'btn ghost'} style={{ fontSize: 13, padding: '6px 10px', borderRadius: 999 }}>All</button>
+                <button type="button" onClick={() => { setFilterMode('sports'); setInterestCarouselIndex(0) }} className={filterMode === 'sports' ? 'btn' : 'btn ghost'} style={{ fontSize: 13, padding: '6px 10px', borderRadius: 999 }}>Sports only</button>
+                <button type="button" onClick={() => { setFilterMode('no-sports'); setInterestCarouselIndex(0) }} className={filterMode === 'no-sports' ? 'btn' : 'btn ghost'} style={{ fontSize: 13, padding: '6px 10px', borderRadius: 999 }}>Hide sports</button>
               </div>
 
-              <h4 style={{ marginTop: 14, marginBottom: 8 }}>Recommended tags</h4>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-                {(query.trim() ? filtered : (
-                  // apply filter to displayedTags as well
-                  filterMode === 'both' ? displayedTags : displayedTags.filter(t => filterMode === 'sports' ? SPORTS.has(t.toLowerCase()) : !SPORTS.has(t.toLowerCase()) )
-                )).map(tag => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => toggle(tag)}
-                    className={"btn " + (selected.includes(tag) ? '' : 'ghost')}
-                    style={{ padding: '6px 10px', fontSize: 13, borderRadius: 999, flex: 'unset' }}
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
+              {/* Arrow-driven wraparound suggestions */}
+              {!interestQuery.trim() ? (
+                <div style={{ position: 'relative', marginTop: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Suggested tags</div>
+                  {availableInterests.length > INTEREST_CAROUSEL_SIZE && (
+                    <>
+                      <div style={{ position: 'absolute', left: 0, top: 28, bottom: 0, width: 38, background: 'linear-gradient(90deg, white 35%, rgba(255,255,255,0))', zIndex: 2, pointerEvents: 'none' }} />
+                      <button type="button" className="icon-btn" aria-label="Scroll left" onClick={() => scrollInterests(-1)} style={{ position: 'absolute', left: 2, top: '62%', transform: 'translateY(-50%)', zIndex: 3, background: 'white', border: '1px solid rgba(15,23,32,0.08)', boxShadow: '0 6px 16px rgba(15,23,32,0.08)' }}>‹</button>
+                    </>
+                  )}
+                  {availableInterests.length > INTEREST_CAROUSEL_SIZE && (
+                    <>
+                      <div style={{ position: 'absolute', right: 0, top: 28, bottom: 0, width: 38, background: 'linear-gradient(270deg, white 35%, rgba(255,255,255,0))', zIndex: 2, pointerEvents: 'none' }} />
+                      <button type="button" className="icon-btn" aria-label="Scroll right" onClick={() => scrollInterests(1)} style={{ position: 'absolute', right: 2, top: '62%', transform: 'translateY(-50%)', zIndex: 3, background: 'white', border: '1px solid rgba(15,23,32,0.08)', boxShadow: '0 6px 16px rgba(15,23,32,0.08)' }}>›</button>
+                    </>
+                  )}
+                  <div style={{ overflow: 'hidden', padding: '0 34px' }}>
+                    <div style={{ display: 'grid', gridAutoFlow: 'column', gridTemplateRows: 'repeat(2, minmax(0, 1fr))', gap: 8, alignItems: 'start', width: 'max-content', paddingBottom: 4 }}>
+                      {visibleInterestSuggestions.map(tag => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => toggle(tag)}
+                          className={selected.includes(tag) ? 'btn' : 'btn ghost'}
+                          style={{ padding: '6px 10px', fontSize: 13, borderRadius: 999, whiteSpace: 'nowrap', lineHeight: 1.1, minHeight: 32, flex: '0 0 auto' }}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Search results</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {filteredInterests.slice(0, 30).map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => toggle(tag)}
+                        className={'btn ' + (selected.includes(tag) ? '' : 'ghost')}
+                        style={{ padding: '6px 10px', fontSize: 13, borderRadius: 999, flex: 'unset' }}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                    {filteredInterests.length === 0 && <div style={{ color: '#9ca3af', fontSize: 13 }}>No matching tags yet.</div>}
+                  </div>
+                </div>
+              )}
 
               {/* Selected tags */}
               {selected.length > 0 && (
                 <div style={{ marginTop: 16 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Selected tags</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Selected</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {selected.map(t => (
-                      <div key={t} className="chip" onClick={() => toggle(t)}>{t} ✕</div>
+                      <div key={t} className="chip" onClick={() => toggle(t)}>{t} <XIcon size={10} style={{ verticalAlign: 'middle', marginLeft: 2 }} /></div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* show suggest option if query not matching any tag */}
-              {query.trim() && !allTags.some(t => t.toLowerCase() === query.trim().toLowerCase()) && (
+              {/* suggest option */}
+              {interestQuery.trim() && !allTags.some(t => t.toLowerCase() === interestQuery.trim().toLowerCase()) && (
                 <div style={{ marginTop: 12 }}>
-                  <button type="button" className="btn ghost full" onClick={handleSuggest}>Suggest "{query.trim()}"</button>
+                  <button type="button" className="btn ghost full" onClick={handleSuggest}>Suggest "{interestQuery.trim()}"</button>
                 </div>
               )}
 
+               <div style={{ marginTop: 14 }}>
+                 <div style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>Privacy <InfoTip text="Controls who can see your interests and sports list on your profile page." /></div>
+                 <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Choose who can see your interests from your profile.</div>
+                 {renderPrivacyButtons('interests')}
+               </div>
+
                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                 {singleMode ? (
-                   <>
-                     <button type="button" className="btn" onClick={handleSave}>Save</button>
-                     <button type="button" className="btn ghost" onClick={handleClose}>Cancel</button>
-                   </>
+                 {requiredFlow ? (
+                    <button type="button" className="btn" onClick={() => setStep(2)} disabled={!isStepValid(1)}>Next: Vibes <ArrowRightIcon size={14} style={{ verticalAlign: 'middle', marginLeft: 2 }} /></button>
                  ) : (
                    <>
-                     <button type="button" className="btn" onClick={() => setStep(2)} disabled={!isStepValid(1)}>Next</button>
-                     {!requiredFlow && <button type="button" className="btn ghost" onClick={onClose}>Skip</button>}
+                     <button type="button" className="btn ghost" onClick={singleMode ? handleClose : handleBackToMenu}>Cancel</button>
+                     <button type="button" className="btn" onClick={handleSave}>Save</button>
                    </>
                  )}
                </div>
@@ -500,37 +651,65 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
           ) : step === 2 ? (
             // Step 2: Vibes
             <>
-              <p style={{ marginTop: 0 }}>Select the vibes that describe your typical sessions or intent. Refresh to see different suggested vibes.</p>
+              <p style={{ marginTop: 0 }}>Select at least one vibe if it helps, and add as many as feel useful. You can continue without choosing any yet.</p>
+
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input className="input" placeholder="Filter vibes" value={''} onChange={() => {}} />
-                  <button type="button" className="btn ghost" onClick={() => setDisplayedVibes(() => sample(VIBES_TAGS.filter(v => !selectedVibes.includes(v)), 10))}>Refresh</button>
+                  <input
+                    className="input"
+                    placeholder="Search vibes"
+                    value={vibeQuery}
+                    onChange={e => { setVibeQuery(e.target.value); setVibeCarouselIndex(0) }}
+                  />
                 </div>
 
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-                  {displayedVibes.map(v => (
-                    <button key={v} type="button" onClick={() => toggleVibe(v)} className={"btn " + (selectedVibes.includes(v) ? '' : 'ghost')} style={{ padding: '6px 10px', fontSize: 13, borderRadius: 999 }}>{v}</button>
-                  ))}
+                <div style={{ position: 'relative', marginTop: 12 }}>
+                  {filteredVibes.length > VIBE_CAROUSEL_SIZE && (
+                    <>
+                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 38, background: 'linear-gradient(90deg, white 35%, rgba(255,255,255,0))', zIndex: 2, pointerEvents: 'none' }} />
+                      <button type="button" className="icon-btn" aria-label="Scroll vibes left" onClick={() => scrollVibes(-1)} style={{ position: 'absolute', left: 2, top: '50%', transform: 'translateY(-50%)', zIndex: 3, background: 'white', border: '1px solid rgba(15,23,32,0.08)', boxShadow: '0 6px 16px rgba(15,23,32,0.08)' }}>‹</button>
+                    </>
+                  )}
+                  {filteredVibes.length > VIBE_CAROUSEL_SIZE && (
+                    <>
+                      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 38, background: 'linear-gradient(270deg, white 35%, rgba(255,255,255,0))', zIndex: 2, pointerEvents: 'none' }} />
+                      <button type="button" className="icon-btn" aria-label="Scroll vibes right" onClick={() => scrollVibes(1)} style={{ position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)', zIndex: 3, background: 'white', border: '1px solid rgba(15,23,32,0.08)', boxShadow: '0 6px 16px rgba(15,23,32,0.08)' }}>›</button>
+                    </>
+                  )}
+                  <div style={{ overflow: 'hidden', padding: '0 34px' }}>
+                    <div style={{ display: 'grid', gridAutoFlow: 'column', gridTemplateRows: 'repeat(2, minmax(0, 1fr))', gap: 8, alignItems: 'start', width: 'max-content', paddingBottom: 4 }}>
+                      {visibleVibeSuggestions.map(v => (
+                        <button key={v} type="button" onClick={() => toggleVibe(v)} className={selectedVibes.includes(v) ? 'btn' : 'btn ghost'} style={{ padding: '6px 10px', fontSize: 13, borderRadius: 999, whiteSpace: 'nowrap', lineHeight: 1.1, minHeight: 32, flex: '0 0 auto' }}>{v}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {filteredVibes.length === 0 && <div style={{ marginTop: 8, color: '#9ca3af', fontSize: 13 }}>No matching vibes found.</div>}
                 </div>
 
                 {selectedVibes.length > 0 && (
                   <div style={{ marginTop: 16 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Selected vibes</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {selectedVibes.map(v => <div key={v} className="chip" onClick={() => toggleVibe(v)}>{v} ✕</div>)}
+                      {selectedVibes.map(v => <div key={v} className="chip" onClick={() => toggleVibe(v)}>{v} <XIcon size={10} style={{ verticalAlign: 'middle', marginLeft: 2 }} /></div>)}
                     </div>
                   </div>
                 )}
 
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>Privacy</div>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Choose who can see your vibes from your profile.</div>
+                  {renderPrivacyButtons('vibes')}
+                </div>
+
                 <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                  {singleMode ? (
+                  {requiredFlow ? (
                     <>
-                      <button type="button" className="btn" onClick={handleSave}>Save</button>
-                      <button type="button" className="btn ghost" onClick={handleClose}>Cancel</button>
+                      <button type="button" className="btn ghost" onClick={() => setStep(1)}><ArrowLeftIcon size={14} style={{ verticalAlign: 'middle', marginRight: 2 }} /> Back</button>
+                      <button type="button" className="btn" onClick={() => { handleSave(); }} disabled={!isStepValid(2)}>Done <CheckIcon size={14} style={{ verticalAlign: 'middle', marginLeft: 2 }} /></button>
                     </>
                   ) : (
                     <>
-                      <button type="button" className="btn" onClick={() => setStep(3)} disabled={!isStepValid(2)}>Next</button>
-                      <button type="button" className="btn ghost" onClick={() => setStep(1)}>Back</button>
+                      <button type="button" className="btn ghost" onClick={singleMode ? handleClose : handleBackToMenu}>Cancel</button>
+                      <button type="button" className="btn" onClick={handleSave}>Save</button>
                     </>
                   )}
                 </div>
@@ -539,45 +718,32 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
             // Step 3: About me
             <>
               <p style={{ marginTop: 0 }}>
-                Include anything in this section you might want others to know about you. This might be what brings you to the area, what your week might look like generally, activities that get you excited or what you might be wanting to find in participants or activities. This helps others connect with you.
+                Include anything in this section you might want others to know about you. This helps others connect with you.
               </p>
 
-              <label className="input-label">About me</label>
+              <label className="input-label">About me <InfoTip text="A short bio - what brings you here, what activities you enjoy, what you look for in sessions." /></label>
               <textarea className="input" style={{ minHeight: 120 }} value={about} onChange={e => setAbout(e.target.value)} />
 
-              <div style={{ marginTop: 8 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Switch checked={aboutPublic} onChange={v => setAboutPublic(v)} />
-                  <span>Make this about me public (visible to everyone). Otherwise it will be limited to friends.</span>
-                </label>
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>Privacy <InfoTip text="Controls who can read your bio on your profile page." /></div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Choose who can see your about section.</div>
+                {renderPrivacyButtons('about')}
               </div>
 
               <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                {singleMode ? (
-                  <>
-                    <button type="button" className="btn" onClick={handleSave}>Save</button>
-                    <button type="button" className="btn ghost" onClick={handleClose}>Cancel</button>
-                  </>
-                ) : (
-                  <>
-                    <button type="button" className="btn" onClick={() => setStep(4)} disabled={!isStepValid(3)}>Next</button>
-                    <button type="button" className="btn ghost" onClick={() => setStep(2)}>Back</button>
-                  </>
-                )}
+                <button type="button" className="btn ghost" onClick={singleMode ? handleClose : handleBackToMenu}>Cancel</button>
+                <button type="button" className="btn" onClick={handleSave}>Save</button>
               </div>
               </>
             ) : step === 4 ? (
-              // Step 4: Gender
+              // Step 4: Demographic information
               <>
                 <p style={{ marginTop: 0 }}>
-                  The following question is used to help users gauge participants in an activity.
+                  This information helps other users gauge group make-up while still letting you control what you share.
                 </p>
 
                 <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 13, marginBottom: 6 }}>Gender (required)</div>
-                  <div style={{ marginBottom: 8, fontSize: 12 }}>
-                    Note: This information will not be displayed on your public profile unless you choose to.
-                  </div>
+                  <div style={{ fontSize: 13, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>Gender <InfoTip text="Optional. By default this is private and only visible if you choose to share it with hosts." /></div>
                   <select className="input" value={gender} onChange={e => setGender(e.target.value)}>
                     <option>Male</option>
                     <option>Female</option>
@@ -586,56 +752,64 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
                   </select>
                 </div>
 
+                <label className="input-label" style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 4 }}>Year of birth <InfoTip text="Optional. Used to show age group context in sessions. Private by default." /></label>
+                <input className="input" value={yearOfBirth} onChange={e => setYearOfBirth(e.target.value)} placeholder="e.g. 1998" inputMode="numeric" />
+
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>Privacy <InfoTip text="Demographic info is sensitive. Private means only you see it. Hosts means session organisers can see it when relevant." /></div>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Demographic information is private by default.</div>
+                  {renderPrivacyButtons('demographic', ['private', 'hosts'])}
+                </div>
+
                 <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                  {singleMode ? (
-                    <>
-                      <button type="button" className="btn" onClick={handleSave}>Save</button>
-                      <button type="button" className="btn ghost" onClick={handleClose}>Cancel</button>
-                    </>
-                  ) : (
-                    <>
-                        <button type="button" className="btn" onClick={() => setStep(5)} disabled={!isStepValid(4)}>Next</button>
-                      <button type="button" className="btn ghost" onClick={() => setStep(3)}>Back</button>
-                    </>
-                  )}
-                  </div>
+                  <button type="button" className="btn ghost" onClick={singleMode ? handleClose : handleBackToMenu}>Cancel</button>
+                  <button type="button" className="btn" onClick={handleSave}>Save</button>
+                </div>
                 </>
                 ) : step === 5 ? (
                   // Step 5: Contact details
                   <>
-                    <p style={{ marginTop: 0 }}>Your username is your public identity across the app. Preferred name is shown to hosts when you apply, and you can choose whether approved participants can also see it.</p>
+                    <p style={{ marginTop: 0 }}>Your username is your public identity across the app. Preferred name is shown to hosts when you apply.</p>
 
-                    <label className="input-label">Username</label>
+                    <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>Profile photo <InfoTip text="Your profile photo is always visible to anyone who views your profile. Choose a photo you are happy to share publicly." /></label>
+                    <input type="file" accept="image/*" onChange={e => {
+                      const f = e.target.files && e.target.files[0]
+                      if (!f) return
+                      const reader = new FileReader()
+                      reader.onload = () => setPhotoDataUrl(String(reader.result || ''))
+                      reader.readAsDataURL(f)
+                    }} />
+                    {photoDataUrl && <div style={{ marginTop: 8 }}><img src={photoDataUrl} alt="Profile preview" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 999, border: '1px solid rgba(15,23,32,0.08)' }} /></div>}
+
+                    <label className="input-label" style={{ marginTop: 10 }}>Username</label>
                     <input className="input" value={getPublicUsername(userId)} readOnly aria-readonly="true" />
 
-                    <label className="input-label">Preferred name</label>
+                    <label className="input-label" style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4 }}>Preferred name <InfoTip text="The name you want hosts to use when addressing you." /></label>
                     <input className="input" value={preferredName} onChange={e => setPreferredName(e.target.value)} placeholder="What hosts can call you (e.g. Alex)" />
 
-                    <div style={{ marginTop: 8 }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <Switch checked={sharePreferredNameWithParticipants} onChange={v => setSharePreferredNameWithParticipants(v)} />
-                        <span>Allow approved group participants to see my preferred name</span>
-                      </label>
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>Preferred name visibility <InfoTip text="Choose whether your preferred name is visible publicly, or only to other session members." /></div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                        <button type="button" className={!sharePreferredNameWithParticipants ? 'btn' : 'btn ghost'} style={{ flex: '0 0 auto', padding: '6px 12px', fontSize: 13, borderRadius: 999 }} onClick={() => setSharePreferredNameWithParticipants(false)}>Public</button>
+                        <button type="button" className={sharePreferredNameWithParticipants ? 'btn' : 'btn ghost'} style={{ flex: '0 0 auto', padding: '6px 12px', fontSize: 13, borderRadius: 999 }} onClick={() => setSharePreferredNameWithParticipants(true)}>Other session members</button>
+                      </div>
                     </div>
 
-                    <label className="input-label" style={{ marginTop: 8 }}>Email (private)</label>
+                    <label className="input-label" style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 4 }}>Email <InfoTip text="Your email is private and will never be shown publicly. You can optionally share it with hosts." /></label>
                     <input className="input" value={contactEmail} onChange={e => setContactEmail(e.target.value)} placeholder="you@example.org" />
 
-                    <label className="input-label" style={{ marginTop: 8 }}>Phone (private)</label>
+                    <label className="input-label" style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4 }}>Phone <InfoTip text="Your phone number is private. You can optionally share it with hosts." /></label>
                     <input className="input" value={contactPhone} onChange={e => setContactPhone(e.target.value)} placeholder="+61 4xx xxx xxx" />
 
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>Contact section privacy <InfoTip text="Controls whether your contact section is visible to others. Hosts means session organisers can see it." /></div>
+                      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Contact details are private by default.</div>
+                      {renderPrivacyButtons('contact', ['private', 'hosts'])}
+                    </div>
+
                     <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                      {singleMode ? (
-                        <>
-                          <button type="button" className="btn" onClick={handleSave}>Save</button>
-                          <button type="button" className="btn ghost" onClick={handleClose}>Cancel</button>
-                        </>
-                      ) : (
-                        <>
-                          <button type="button" className="btn" onClick={() => { if (isStepValid(5)) { saveProfile(buildProfile({ email: contactEmail || undefined, phone: contactPhone || undefined })) ; setStep(6) } }} disabled={!isStepValid(5)}>Next</button>
-                          <button type="button" className="btn ghost" onClick={() => setStep(4)}>Back</button>
-                        </>
-                      )}
+                      <button type="button" className="btn ghost" onClick={singleMode ? handleClose : handleBackToMenu}>Cancel</button>
+                      <button type="button" className="btn" onClick={() => { saveProfile(buildProfile({ email: contactEmail || undefined, phone: contactPhone || undefined })); setToast('Saved'); setTimeout(() => setToast(null), 1500) }}>Save</button>
                     </div>
                   </>
                 ) : step === 6 ? (
@@ -656,18 +830,76 @@ export default function ProfileModal({ open, onClose, userId, initialStep }: Edi
                     <label className="input-label" style={{ marginTop: 8 }}>Confirm new password</label>
                     <input className="input" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} />
 
-                    <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
                       {singleMode ? (
                         <>
-                          <button type="button" className="btn" onClick={() => { handleChangePassword(); handleClose() }}>Save</button>
                           <button type="button" className="btn ghost" onClick={handleClose}>Cancel</button>
+                          <button type="button" className="btn" onClick={() => { handleChangePassword(); handleClose() }}>Save</button>
                         </>
                       ) : (
                         <>
-                          <button type="button" className="btn" onClick={() => { if (isStepValid(6)) handleChangePassword(); setStep(1) }} disabled={!isStepValid(6)}>Save</button>
-                          <button type="button" className="btn ghost" onClick={() => setStep(5)}>Back</button>
+                          <button type="button" className="btn ghost" onClick={handleBackToMenu}>Cancel</button>
+                          <button type="button" className="btn" onClick={() => {
+                            if (!isStepValid(6)) return
+                            if (newPassword || confirmPassword || currentPassword) handleChangePassword()
+                            else { setToast('No changes'); setTimeout(() => setToast(null), 1200) }
+                          }} disabled={!isStepValid(6)}>Save</button>
                         </>
                       )}
+                    </div>
+                  </>
+                ) : step === 7 ? (
+                  // Step 7: Profile tabs privacy
+                  <>
+                    <p style={{ marginTop: 0 }}>Control who can see each section of your profile. These settings apply to visitors viewing your profile.</p>
+
+                    <div style={{ display: 'grid', gap: 14 }}>
+                      <div style={{ padding: 14, borderRadius: 14, background: '#f8fafc', border: '1px solid rgba(15,23,32,0.08)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>Interests &amp; sports</div>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2, marginBottom: 8 }}>Your activity interests and hobbies.</div>
+                        {renderPrivacyButtons('interests')}
+                      </div>
+
+                      <div style={{ padding: 14, borderRadius: 14, background: '#f8fafc', border: '1px solid rgba(15,23,32,0.08)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>Vibes</div>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2, marginBottom: 8 }}>The session types and social context you enjoy.</div>
+                        {renderPrivacyButtons('vibes')}
+                      </div>
+
+                      <div style={{ padding: 14, borderRadius: 14, background: '#f8fafc', border: '1px solid rgba(15,23,32,0.08)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>About me</div>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2, marginBottom: 8 }}>Your profile bio.</div>
+                        {renderPrivacyButtons('about')}
+                      </div>
+
+                      <div style={{ padding: 14, borderRadius: 14, background: '#f8fafc', border: '1px solid rgba(15,23,32,0.08)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>Demographics</div>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2, marginBottom: 8 }}>Gender and year of birth.</div>
+                        {renderPrivacyButtons('demographic', ['private', 'hosts'])}
+                      </div>
+
+                      <div style={{ padding: 14, borderRadius: 14, background: '#f8fafc', border: '1px solid rgba(15,23,32,0.08)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>Hosted sessions tab</div>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2, marginBottom: 8 }}>Sessions you have hosted.</div>
+                        {renderPrivacyButtons('hostHistory')}
+                      </div>
+
+                      <div style={{ padding: 14, borderRadius: 14, background: '#f8fafc', border: '1px solid rgba(15,23,32,0.08)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>Participant history tab</div>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2, marginBottom: 8 }}>Sessions you have participated in.</div>
+                        {renderPrivacyButtons('participantHistory')}
+                      </div>
+
+                      <div style={{ padding: 14, borderRadius: 14, background: '#f8fafc', border: '1px solid rgba(15,23,32,0.08)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>Reviews tab</div>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2, marginBottom: 8 }}>Reviews and feedback received.</div>
+                        {renderPrivacyButtons('reviews')}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                      <button type="button" className="btn ghost" onClick={singleMode ? handleClose : handleBackToMenu}>Cancel</button>
+                      <button type="button" className="btn" onClick={handleSave}>Save</button>
                     </div>
                   </>
                 ) : null}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { getProfile, saveProfileSkill, applyToEvent, saveProfile } from './AuthService'
+import { getProfile, saveProfileSkill, applyToEvent, saveProfile, SkillLevel } from './AuthService'
+import Switch from './Switch'
 
 type Props = {
   open: boolean
@@ -11,7 +12,7 @@ type Props = {
 
 export default function ApplyModal({ open, eventId, userId, activityDetails, onClose }: Props) {
   const [step, setStep] = useState(1)
-  const [skillLevel, setSkillLevel] = useState<'Beginner'|'Intermediate'|'Advanced'>('Beginner')
+  const [skillLevel, setSkillLevel] = useState<SkillLevel>('No experience')
   const [message, setMessage] = useState('')
   const [sharePreferredNameWithParticipants, setSharePreferredNameWithParticipants] = useState(false)
 
@@ -55,7 +56,7 @@ export default function ApplyModal({ open, eventId, userId, activityDetails, onC
 
   return (
     <div className="modal-overlay" style={{ zIndex: 1100 }}>
-      <div className="modal" style={{ maxWidth: 400 }}>
+      <div className="modal">
         <div className="modal-header">
           <h3>Apply for Session</h3>
           <button className="modal-close" onClick={onClose}>x</button>
@@ -65,6 +66,7 @@ export default function ApplyModal({ open, eventId, userId, activityDetails, onC
              <>
                <p>Please provide your self-assessed skill level for <strong>{activityDetails}</strong>.</p>
                <select className="input" value={skillLevel} onChange={e => setSkillLevel(e.target.value as any)}>
+                  <option value="No experience">No experience</option>
                  <option value="Beginner">Beginner</option>
                  <option value="Intermediate">Intermediate</option>
                  <option value="Advanced">Advanced</option>
@@ -81,9 +83,9 @@ export default function ApplyModal({ open, eventId, userId, activityDetails, onC
                <div style={{ fontSize: 13, color: '#4b5563' }}>
                   Hosts will be able to see your preferred name with this application. Your public identity elsewhere stays as your username.
                </div>
-               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input type="checkbox" id="preferred-name-visibility" checked={sharePreferredNameWithParticipants} onChange={e => setSharePreferredNameWithParticipants(e.target.checked)} />
-                  <label htmlFor="preferred-name-visibility" style={{ fontSize: 13 }}>Let approved participants see my preferred name</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Switch checked={sharePreferredNameWithParticipants} onChange={setSharePreferredNameWithParticipants} ariaLabel="Let approved participants see my preferred name" />
+                  <div style={{ fontSize: 13 }}>Let approved participants see my preferred name</div>
                </div>
                <button className="btn" onClick={handleSubmit}>Submit Application</button>
              </>

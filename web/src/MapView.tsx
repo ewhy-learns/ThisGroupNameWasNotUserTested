@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
-import { getProfile, getLoggedInUser, getPublicIdentityLabel } from './AuthService'
+import { getEventEndTimestamp, getProfile, getLoggedInUser, getPublicIdentityLabel, getSessionRecommendation, listEvents, parseEventCostValue } from './AuthService'
+import MapSearchFiltersModal, { MapSearchFilters } from './MapSearchFiltersModal'
+import { EventAvatar } from './AvatarUtils'
 // Leaflet CSS is required for markers, popups and controls to render correctly
 import 'leaflet/dist/leaflet.css'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
@@ -41,11 +43,124 @@ export default function MapView({ zoom = 13 }: Props) {
   const userPulseRef = useRef<L.CircleMarker | null>(null)
   const searchMarkerRef = useRef<L.Marker | null>(null)
   const [status, setStatus] = useState<string>('Locating...')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<any[]>([])
-  const [searchLoading, setSearchLoading] = useState(false)
-  const [showResults, setShowResults] = useState(false)
   const searchTimeout = useRef<number | null>(null)
+  const mapInvalidateTimeout = useRef<number | null>(null)
+  const locateInvalidateTimeout = useRef<number | null>(null)
+  const refreshMarkersRef = useRef<(() => void) | null>(null)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(0)
+  const [filteredEvents, setFilteredEvents] = useState<any[]>([])
+  const [resultsMode, setResultsMode] = useState<'map' | 'list'>('map')
+  const [appliedFilters, setAppliedFilters] = useState<MapSearchFilters>({ dateAfter: new Date().toISOString().slice(0, 10) })
+  const filtersRef = useRef<MapSearchFilters>(appliedFilters)
+
+  const activeFilterCount = React.useMemo(() => {
+    let count = 0
+    if (appliedFilters.keyword) count++
+    if (appliedFilters.centerCoords) count++
+    if (appliedFilters.radiusKm) count++
+    if (appliedFilters.timeAfter || appliedFilters.timeBefore) count++
+    if (appliedFilters.dateBefore) count++
+    if (appliedFilters.maxCost !== undefined) count++
+    if (appliedFilters.minHostRating !== undefined) count++
+    return count
+  }, [appliedFilters])
+
+  const filterSummary = React.useMemo(() => {
+    const parts: string[] = []
+    if (appliedFilters.keyword) parts.push(`keyword: ${appliedFilters.keyword}`)
+    if (appliedFilters.radiusKm) parts.push(`${appliedFilters.radiusKm} km radius`)
+    if (appliedFilters.maxCost !== undefined) parts.push(`max $${appliedFilters.maxCost}`)
+    if (appliedFilters.minHostRating !== undefined) parts.push(`${appliedFilters.minHostRating}+★ host`)
+    return parts.join(' · ')
+  }, [appliedFilters])
+
+  function parseTimeToMinutes(value?: string) {
+    if (!value || !/^\d{2}:\d{2}$/.test(value)) return null
+    const [hh, mm] = value.split(':').map(Number)
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return null
+    return hh * 60 + mm
+  }
+
+  function haversineKm(aLat: number, aLon: number, bLat: number, bLon: number) {
+    const toRad = (deg: number) => deg * (Math.PI / 180)
+    const earthRadiusKm = 6371
+    const dLat = toRad(bLat - aLat)
+    const dLon = toRad(bLon - aLon)
+    const lat1 = toRad(aLat)
+    const lat2 = toRad(bLat)
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2
+    return 2 * earthRadiusKm * Math.asin(Math.sqrt(h))
+  }
+
+  function isUpcomingEvent(event: any) {
+    const end = getEventEndTimestamp(event)
+    return !!end && end >= Date.now()
+  }
+
+  function getEventSortTime(event: any) {
+    try {
+      const timestamp = new Date(`${event?.date || ''}T${event?.startTime || '00:00'}`).getTime()
+      return Number.isNaN(timestamp) ? Number.MAX_SAFE_INTEGER : timestamp
+    } catch {
+      return Number.MAX_SAFE_INTEGER
+    }
+  }
+
+  function getKeywordScore(event: any, keyword?: string) {
+    const query = String(keyword || '').trim().toLowerCase()
+    if (!query) return 0
+    const tokens = query.split(/\s+/).filter(Boolean)
+    const title = String(event.title || '').toLowerCase()
+    const activity = String(event.activity || '').toLowerCase()
+    const vibes = (Array.isArray(event.vibes) ? event.vibes.map((value: string) => String(value).toLowerCase()) : []).join(' ')
+    const description = String(event.description || '').toLowerCase()
+    let score = 0
+    for (const token of tokens) {
+      if (activity === token) score += 10
+      else if (activity.startsWith(token)) score += 8
+      else if (activity.includes(token)) score += 6
+
+      if (title === token) score += 8
+      else if (title.startsWith(token)) score += 6
+      else if (title.includes(token)) score += 4
+
+      if (vibes.split(' ').includes(token)) score += 5
+      else if (vibes.includes(token)) score += 3
+
+      if (description.includes(token)) score += 2
+    }
+    return score
+  }
+
+  function renderEventAvatar(event: any, size = 72) {
+    return <EventAvatar event={event} size={size} />
+  }
+
+  function eventMatchesFilters(event: any, filters: MapSearchFilters, mapCenter?: L.LatLng | null) {
+    if (!isUpcomingEvent(event)) return false
+    if (filters.dateAfter && event.date && String(event.date) < String(filters.dateAfter)) return false
+    if (filters.dateBefore && event.date && String(event.date) > String(filters.dateBefore)) return false
+    if (filters.keyword) {
+      if (getKeywordScore(event, filters.keyword) <= 0) return false
+    }
+    const eventTimeMinutes = parseTimeToMinutes(event.startTime)
+    const timeAfterMinutes = parseTimeToMinutes(filters.timeAfter)
+    const timeBeforeMinutes = parseTimeToMinutes(filters.timeBefore)
+    if (timeAfterMinutes !== null && (eventTimeMinutes === null || eventTimeMinutes < timeAfterMinutes)) return false
+    if (timeBeforeMinutes !== null && (eventTimeMinutes === null || eventTimeMinutes > timeBeforeMinutes)) return false
+    const costValue = typeof event.costValue === 'number' ? event.costValue : parseEventCostValue(event.cost)
+    if (filters.maxCost !== undefined && (costValue === undefined || costValue > filters.maxCost)) return false
+    const hostRating = Number(getProfile(event.host || '')?.rating || 0)
+    if (filters.minHostRating !== undefined && hostRating < filters.minHostRating) return false
+    if (filters.radiusKm !== undefined) {
+      const center = filters.centerCoords || (mapCenter ? { lat: mapCenter.lat, lon: mapCenter.lng } : undefined)
+      const coords = event.locationCoords
+      if (!center || !coords || typeof coords.lat !== 'number' || typeof coords.lon !== 'number') return false
+      if (haversineKm(center.lat, center.lon, coords.lat, coords.lon) > filters.radiusKm) return false
+    }
+    return true
+  }
 
   useEffect(() => {
     console.debug('[MapView] useEffect init')
@@ -71,9 +186,9 @@ export default function MapView({ zoom = 13 }: Props) {
     map.setView(UNE_COORD, 12)
 
     // sometimes the container size needs to be invalidated after visible
-    setTimeout(() => {
+    mapInvalidateTimeout.current = window.setTimeout(() => {
       try {
-        map.invalidateSize()
+        if (mapRef.current === map) map.invalidateSize()
         console.debug('[MapView] invalidated map size after init')
       } catch (e) {
         console.warn('[MapView] invalidateSize failed', e)
@@ -107,12 +222,14 @@ export default function MapView({ zoom = 13 }: Props) {
       if (!host && e.organiserName) host = e.organiserName
       // If still missing and host doesn't look like an email, use it as a fallback plain string
       const fallbackHost = (!host && e.host && typeof e.host === 'string' && !e.host.includes('@')) ? e.host : ''
+      const recommendation = getSessionRecommendation(getLoggedInUser(), e)
       const parts = []
       parts.push(`<div class="map-popup-card" style="padding:4px;min-width:180px">`)
       parts.push(`<div style="font-weight:700;font-size:15px;margin-bottom:6px">${escapeHtml(title)}</div>`)
       if (dt) parts.push(`<div style="font-size:12px;color:#6b7280;margin-bottom:4px">${escapeHtml(dt)}</div>`)
       const hostToShow = host || fallbackHost
       if (hostToShow) parts.push(`<div style="margin-top:8px;font-size:13px">Host: <strong>${escapeHtml(hostToShow)}${escapeHtml(rating)}</strong></div>`)
+      if (recommendation.badgeCount > 0) parts.push(`<div style="margin-top:8px;font-size:13px;color:#2563eb;font-weight:700">${escapeHtml(recommendation.badge)} Recommended</div>`)
       parts.push(`<div style="margin-top:12px;display:flex;justify-content:flex-end"><button data-event-id=\"${escapeHtml(e.id)}\" class=\"btn map-join-link\">View / Join</button></div>`)
       parts.push(`</div>`)
       return parts.join('\n')
@@ -128,10 +245,17 @@ export default function MapView({ zoom = 13 }: Props) {
       // clear previous markers
       try { clusterGroup.clearLayers() } catch (e) { /* ignore */ }
       try {
-        const raw = localStorage.getItem('demo1_events_v1')
-        if (!raw) return
-        const evts = JSON.parse(raw)
-        if (!Array.isArray(evts)) return
+        const evts = listEvents()
+          .filter(event => eventMatchesFilters(event, filtersRef.current, mapRef.current?.getCenter() || null))
+          .sort((a, b) => {
+            const keywordDelta = getKeywordScore(b, filtersRef.current.keyword) - getKeywordScore(a, filtersRef.current.keyword)
+            if (keywordDelta !== 0) return keywordDelta
+            const recommendationDelta = getSessionRecommendation(getLoggedInUser(), b).score - getSessionRecommendation(getLoggedInUser(), a).score
+            if (recommendationDelta !== 0) return recommendationDelta
+            return getEventSortTime(a) - getEventSortTime(b)
+          })
+        setVisibleCount(evts.length)
+        setFilteredEvents(evts)
         for (const e of evts) {
           const lc = e.locationCoords
           if (lc && typeof lc.lat === 'number' && typeof lc.lon === 'number') {
@@ -168,6 +292,7 @@ export default function MapView({ zoom = 13 }: Props) {
 
     // initial load
     loadEventMarkers()
+    refreshMarkersRef.current = loadEventMarkers
 
     // react to other tabs updating events in localStorage
     const onStorage = (ev: StorageEvent) => {
@@ -259,7 +384,12 @@ export default function MapView({ zoom = 13 }: Props) {
               if (m2) try { m2.setView([lat, lon], 14) } catch (e2) {}
             }
 
-            setTimeout(() => { const m3 = mapRef.current; if (m3) m3.invalidateSize() }, 300)
+            locateInvalidateTimeout.current = window.setTimeout(() => {
+              const m3 = mapRef.current
+              if (m3) {
+                try { m3.invalidateSize() } catch (e) { console.warn('[MapView] locate invalidateSize failed', e) }
+              }
+            }, 300)
 
             // Show a small solid blue dot plus a subtle pulsing halo
             if (userMarkerRef.current) {
@@ -322,6 +452,8 @@ export default function MapView({ zoom = 13 }: Props) {
     // cleanup on unmount
     return () => {
       try { if (searchTimeout.current) window.clearTimeout(searchTimeout.current) } catch (e) {}
+      try { if (mapInvalidateTimeout.current) window.clearTimeout(mapInvalidateTimeout.current) } catch (e) {}
+      try { if (locateInvalidateTimeout.current) window.clearTimeout(locateInvalidateTimeout.current) } catch (e) {}
        try { window.removeEventListener('storage', onStorage) } catch (e) {}
        try { window.removeEventListener('demo1_events_updated', onEventsUpdated) } catch (e) {}
        try { clusterGroup.clearLayers && clusterGroup.clearLayers() } catch (e) {}
@@ -344,52 +476,14 @@ export default function MapView({ zoom = 13 }: Props) {
     }
   }, [zoom])
 
-  // Debounced search against Nominatim (OpenStreetMap)
-  const runSearch = (q: string) => {
-    if (!q) {
-      setSearchResults([])
-      setSearchLoading(false)
-      return
-    }
-    setSearchLoading(true)
-    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6`)
-      .then(res => res.json())
-      .then((data) => {
-        setSearchResults(Array.isArray(data) ? data : [])
-      })
-      .catch((e) => {
-        console.warn('[MapView] search failed', e)
-        setSearchResults([])
-      })
-      .finally(() => setSearchLoading(false))
-  }
-
-  const onSearchChange = (v: string) => {
-    setSearchQuery(v)
-    setShowResults(true)
-    if (searchTimeout.current) window.clearTimeout(searchTimeout.current)
-    // debounce
-    searchTimeout.current = window.setTimeout(() => runSearch(v.trim()), 350)
-  }
-
-  const selectSearchResult = (r: any) => {
+  useEffect(() => {
+    filtersRef.current = appliedFilters
     const map = mapRef.current
-    if (!map) return
-    const lat = parseFloat(r.lat)
-    const lon = parseFloat(r.lon)
-    try { map.flyTo([lat, lon], 15, { animate: true }) } catch { map.setView([lat, lon], 15) }
-    // add or move search marker
-    if (searchMarkerRef.current) {
-      searchMarkerRef.current.setLatLng([lat, lon]).bindPopup(r.display_name).openPopup()
-    } else {
-      // ensure the search marker also uses the explicit icon
-      searchMarkerRef.current = L.marker([lat, lon], { icon: explicitDefaultIcon }).addTo(map).bindPopup(r.display_name).openPopup()
+    if (map && appliedFilters.centerCoords) {
+      try { map.flyTo([appliedFilters.centerCoords.lat, appliedFilters.centerCoords.lon], 13, { animate: true }) } catch { try { map.setView([appliedFilters.centerCoords.lat, appliedFilters.centerCoords.lon], 13) } catch {} }
     }
-    setShowResults(false)
-    setSearchResults([])
-    setSearchQuery(r.display_name || '')
-    setTimeout(() => map.invalidateSize(), 300)
-  }
+    if (refreshMarkersRef.current) refreshMarkersRef.current()
+  }, [appliedFilters])
 
   const recenter = () => {
     const map = mapRef.current
@@ -440,28 +534,98 @@ export default function MapView({ zoom = 13 }: Props) {
 
   return (
     <div className="map-root" style={{ display: 'flex', flex: 1, flexDirection: 'column', position: 'relative' }}>
-      {/* search overlay */}
-      <div className="map-search" style={{ position: 'absolute', top: 10, right: 10, zIndex: 900, width: '320px', maxWidth: 'calc(100% - 24px)' }}>
-        <input
-          className="input"
-          placeholder="Search places"
-          value={searchQuery}
-          onChange={e => onSearchChange(e.target.value)}
-          onFocus={() => setShowResults(true)}
-        />
-        {showResults && (searchResults.length > 0 || searchLoading) && (
-          <div className="search-results" style={{ background: 'white', borderRadius: 8, marginTop: 6, boxShadow: '0 6px 18px rgba(2,6,23,0.12)', maxHeight: 240, overflow: 'auto' }}>
-            {searchLoading && <div style={{ padding: 8 }}>Searching…</div>}
-            {searchResults.map(r => (
-              <div key={`${r.place_id}`} className="search-result" style={{ padding: 8, borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }} onClick={() => selectSearchResult(r)}>
-                <div style={{ fontSize: 13 }}>{r.display_name}</div>
-              </div>
-            ))}
+      <div className="map-search" style={{ padding: '10px 12px 0 12px' }}>
+        <div style={{ background: 'white', borderRadius: 16, boxShadow: '0 8px 24px rgba(2,6,23,0.08)', padding: 12, border: '1px solid rgba(15,23,32,0.06)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>Upcoming sessions</div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{visibleCount} result{visibleCount === 1 ? '' : 's'}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button type="button" className="btn ghost" style={{ flex: '0 0 auto', minWidth: 64, fontWeight: resultsMode === 'map' ? 800 : 600, borderColor: resultsMode === 'map' ? 'rgba(var(--secondary-rgb),0.35)' : undefined }} onClick={() => setResultsMode('map')}>
+                Map
+              </button>
+              <button type="button" className="btn ghost" style={{ flex: '0 0 auto', minWidth: 64, fontWeight: resultsMode === 'list' ? 800 : 600, borderColor: resultsMode === 'list' ? 'rgba(var(--secondary-rgb),0.35)' : undefined }} onClick={() => setResultsMode('list')}>
+                List
+              </button>
+              <button type="button" className="btn" style={{ flex: '0 0 auto' }} onClick={() => setFiltersOpen(true)}>
+                Search{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+              </button>
+            </div>
           </div>
-        )}
+          {filterSummary && (
+            <div style={{ fontSize: 12, color: '#6b7280' }}>
+              {filterSummary}
+            </div>
+          )}
+          {activeFilterCount > 0 && (
+            <button type="button" className="btn ghost" style={{ flex: '0 0 auto', alignSelf: 'flex-start' }} onClick={() => setAppliedFilters({ dateAfter: new Date().toISOString().slice(0, 10) })}>
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       <div ref={mapEl} className="map-container" style={{ flex: 1, minHeight: 300 }} />
+
+      {resultsMode === 'list' && (
+        <div style={{ position: 'absolute', left: 12, right: 12, top: 12, bottom: 20, zIndex: 1800, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+          <div style={{ width: '100%', maxWidth: 860, background: 'rgba(255,255,255,0.98)', borderRadius: 20, boxShadow: '0 24px 48px rgba(2,6,23,0.22)', border: '1px solid rgba(15,23,32,0.06)', overflow: 'hidden', display: 'flex', flexDirection: 'column', pointerEvents: 'auto' }}>
+            <div style={{ padding: '12px 14px', borderBottom: '1px solid #e5e7eb', fontSize: 13, color: '#6b7280', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontWeight: 700, color: '#111827' }}>List view of filtered upcoming sessions</div>
+                <div style={{ marginTop: 2 }}>{filteredEvents.length} result{filteredEvents.length === 1 ? '' : 's'}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" className="btn ghost" style={{ flex: '0 0 auto' }} onClick={() => setFiltersOpen(true)}>Search</button>
+                <button type="button" className="btn ghost" style={{ flex: '0 0 auto' }} onClick={() => setResultsMode('map')}>Back to map</button>
+              </div>
+            </div>
+            <div style={{ overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {filteredEvents.length === 0 ? (
+                <div style={{ color: '#6b7280', padding: 12 }}>No sessions match the current filters.</div>
+              ) : filteredEvents.map((event, index) => {
+              const hostProfile = event.host ? getProfile(event.host) : null
+              const hostName = event.host ? getPublicIdentityLabel(event.host, hostProfile || undefined) : (event.organiserName || 'Unknown host')
+              const recommendation = getSessionRecommendation(getLoggedInUser(), event)
+              const costValue = typeof event.costValue === 'number' ? event.costValue : parseEventCostValue(event.cost)
+              return (
+                <div key={event.id} style={{ background: 'white', borderRadius: 14, border: '1px solid rgba(15,23,32,0.06)', padding: 12, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                  {renderEventAvatar(event, 84)}
+                  <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 15 }}>{event.title || event.activity || 'Session'}</div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: '#6b7280' }}>{event.date} {event.startTime ? `· ${event.startTime}` : ''}</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {appliedFilters.keyword && <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 700 }}>#{index + 1} best match</div>}
+                        {recommendation.badgeCount > 0 && <div style={{ fontSize: 18, lineHeight: 1 }}>{recommendation.badge}</div>}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 13, color: '#374151' }}>{event.location || 'Location not specified'}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 12, color: '#6b7280' }}>
+                      <span>Host: {hostName}{typeof hostProfile?.rating === 'number' ? ` (${hostProfile.rating}★)` : ''}</span>
+                      <span>Cost: {costValue !== undefined ? `$${costValue}` : (event.cost || 'Unknown')}</span>
+                    </div>
+                    {recommendation.reasons.length > 0 && <div style={{ fontSize: 12, color: '#1d4ed8' }}>{recommendation.reasons.join(' · ')}</div>}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button type="button" className="btn" onClick={() => window.dispatchEvent(new CustomEvent('demo1_open_event', { detail: { id: event.id } }))}>View session</button>
+                      {event.locationCoords && <button type="button" className="btn ghost" onClick={() => {
+                        const map = mapRef.current
+                        if (!map) return
+                        try { map.flyTo([event.locationCoords.lat, event.locationCoords.lon], 15, { animate: true }) } catch { try { map.setView([event.locationCoords.lat, event.locationCoords.lon], 15) } catch {} }
+                        setResultsMode('map')
+                      }}>Show on map</button>}
+                    </div>
+                  </div>
+                </div>
+              )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Recenter floating button inside map area */}
       <button
@@ -473,13 +637,19 @@ export default function MapView({ zoom = 13 }: Props) {
       >
         {/* simple crosshair SVG */}
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-          <circle cx="12" cy="12" r="7" stroke="#0B61FF" strokeWidth="1.6" />
-          <path d="M12 3v3" stroke="#0B61FF" strokeWidth="1.6" strokeLinecap="round" />
-          <path d="M12 21v-3" stroke="#0B61FF" strokeWidth="1.6" strokeLinecap="round" />
-          <path d="M3 12h3" stroke="#0B61FF" strokeWidth="1.6" strokeLinecap="round" />
-          <path d="M21 12h-3" stroke="#0B61FF" strokeWidth="1.6" strokeLinecap="round" />
+          <circle cx="12" cy="12" r="7" stroke="var(--secondary)" strokeWidth="1.6" />
+          <path d="M12 3v3" stroke="var(--secondary)" strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M12 21v-3" stroke="var(--secondary)" strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M3 12h3" stroke="var(--secondary)" strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M21 12h-3" stroke="var(--secondary)" strokeWidth="1.6" strokeLinecap="round" />
         </svg>
       </button>
+      <MapSearchFiltersModal
+        open={filtersOpen}
+        filters={appliedFilters}
+        onApply={setAppliedFilters}
+        onClose={() => setFiltersOpen(false)}
+      />
     </div>
   )
 }

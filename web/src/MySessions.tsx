@@ -1,5 +1,6 @@
 import React from 'react'
-import { listEvents, listDraftSessions, getProfile, getPublicIdentityLabel } from './AuthService'
+import { getPendingSkillSuggestions, getProfile, getPublicIdentityLabel, listDraftSessions, listEvents, needsHostWrapUp, needsParticipantReview } from './AuthService'
+import { EventAvatar } from './AvatarUtils'
 
 type RoleFilter = 'organising' | 'participating' | 'both'
 type StatusFilter = 'all' | 'upcoming' | 'past' | 'outstanding'
@@ -55,11 +56,14 @@ export default function MySessions({ userId, onEditDraft }: { userId: string; on
   React.useEffect(() => {
     load()
     const onEventsUpdated = () => { try { load() } catch {} }
+    const onReviewsUpdated = () => { try { load() } catch {} }
     const onStorage = () => { try { load() } catch {} }
     window.addEventListener('demo1_events_updated', onEventsUpdated as EventListener)
+    window.addEventListener('demo1_reviews_updated', onReviewsUpdated as EventListener)
     window.addEventListener('storage', onStorage)
     return () => {
       window.removeEventListener('demo1_events_updated', onEventsUpdated as EventListener)
+      window.removeEventListener('demo1_reviews_updated', onReviewsUpdated as EventListener)
       window.removeEventListener('storage', onStorage)
     }
   }, [load])
@@ -79,7 +83,10 @@ export default function MySessions({ userId, onEditDraft }: { userId: string; on
     const app = getMyApplication(evt, userId)
     const isDraft = !!evt.isDraft
     const isPast = !isDraft && toTimestamp(evt) < now
-    const hasOutstandingAction = isDraft || (!!app && (app.status === 'pending' || app.status === 'waitlisted')) || (isHost && Array.isArray(evt.applications) && evt.applications.some((a: any) => a.status === 'pending' || a.status === 'waitlisted'))
+    const needsReview = !isDraft && needsParticipantReview(evt, userId, now)
+    const needsWrapUp = !isDraft && needsHostWrapUp(evt, userId, now)
+    const hasSkillSuggestion = !isDraft && getPendingSkillSuggestions(userId, evt.id, now).length > 0
+    const hasOutstandingAction = isDraft || needsReview || needsWrapUp || hasSkillSuggestion || (!!app && (app.status === 'pending' || app.status === 'waitlisted')) || (isHost && Array.isArray(evt.applications) && evt.applications.some((a: any) => a.status === 'pending' || a.status === 'waitlisted'))
 
     if (roleFilter === 'organising' && !isHost) return false
     if (roleFilter === 'participating' && !isParticipant) return false
@@ -143,36 +150,37 @@ export default function MySessions({ userId, onEditDraft }: { userId: string; on
             if (!evt.isDraft && toTimestamp(evt) < now) badges.push('Past')
 
             return (
-              <div key={evt.id} style={{ border: '1px solid rgba(2,6,23,0.06)', padding: 12, borderRadius: 10, background: 'white' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 700 }}>{evt.title || evt.activity || 'Untitled'}</div>
-                    <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
-                      {evt.date || 'No date'}{evt.startTime ? ` · ${evt.startTime}` : ''}{evt.location ? ` · ${evt.location}` : ''}
+              <div key={evt.id} style={{ border: '1px solid rgba(2,6,23,0.06)', borderRadius: 14, background: 'white', overflow: 'hidden', cursor: 'pointer', transition: 'box-shadow 0.2s', ':hover': { boxShadow: '0 4px 12px rgba(0,0,0,0.05)' } } as any} onClick={() => openEvent(evt)}>
+                <div style={{ padding: 14, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                  <EventAvatar event={evt} size={64} />
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+                      {badges.map(b => <span key={b} className="chip" style={{ fontSize: 11, padding: '2px 8px', minHeight: 20, fontWeight: 700 }}>{b}</span>)}
                     </div>
-                    <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Host: {hostName}</div>
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
-                    {badges.map(b => <span key={b} className="chip">{b}</span>)}
+                    <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.25 }}>{evt.title || evt.activity || 'Untitled'}</div>
+                    <div style={{ fontSize: 13, color: '#6b7280', marginTop: 6, lineHeight: 1.4 }}>
+                      {evt.date || 'No date'}{evt.startTime ? ` · ${evt.startTime}` : ''}{evt.location ? ` · ${evt.location}` : ''}
+                      <br/>
+                      <span style={{ color: '#4b5563' }}>Host: <strong>{hostName}</strong></span>
+                    </div>
                   </div>
                 </div>
 
                 {!evt.isDraft && (
-                  <div style={{ fontSize: 13, color: '#6b7280', marginTop: 8 }}>
-                    Approved: {approvedCount}
-                    {evt.participantsMin ? ` · Min ${evt.participantsMin}` : ''}
-                    {evt.participantsMax ? ` · Max ${evt.participantsMax}` : ''}
-                    {isHost ? ` · Pending ${pendingCount}` : ''}
-                    {waitlistCount > 0 ? ` · Waitlist ${waitlistCount}` : ''}
+                  <div style={{ borderTop: '1px solid rgba(2,6,23,0.04)', background: '#fdfbfa', padding: '10px 14px', fontSize: 12, color: '#6b7280', display: 'flex', flexWrap: 'wrap', gap: '8px 16px' }}>
+                    <span>Approved: <strong style={{ color: '#111827' }}>{approvedCount}</strong>{evt.participantsMax ? ` / ${evt.participantsMax}` : ''}</span>
+                    {evt.participantsMin ? <span>Min: {evt.participantsMin}</span> : null}
+                    {isHost && pendingCount > 0 ? <span>Pending: <strong style={{ color: '#d97706' }}>{pendingCount}</strong></span> : null}
+                    {waitlistCount > 0 ? <span>Waitlist: {waitlistCount}</span> : null}
                   </div>
                 )}
 
-                <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button className="btn ghost" onClick={() => openEvent(evt)}>{evt.isDraft ? 'View draft' : 'View'}</button>
-                  {evt.isDraft && <button className="btn" onClick={() => onEditDraft ? onEditDraft(evt) : alert('Draft editing unavailable')}>Edit draft</button>}
-                  {!evt.isDraft && isHost && <button className="btn" onClick={() => alert('Edit session (prototype)')}>Edit</button>}
-                  {!evt.isDraft && app && (app.status === 'pending' || app.status === 'waitlisted') && <button className="btn" onClick={() => alert('Cancel application (prototype)')}>Cancel application</button>}
-                </div>
+                {(evt.isDraft || (!evt.isDraft && isHost)) && (
+                  <div style={{ padding: '12px 14px', borderTop: '1px solid rgba(2,6,23,0.06)', display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {evt.isDraft && <button className="btn" onClick={(e) => { e.stopPropagation(); if(onEditDraft) onEditDraft(evt); else alert('Draft editing unavailable'); }}>Edit draft</button>}
+                    {!evt.isDraft && isHost && <button className="btn" onClick={(e) => { e.stopPropagation(); alert('Edit session (prototype)'); }}>Edit</button>}
+                  </div>
+                )}
               </div>
             )
           })}

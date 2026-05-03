@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { accountExists, registerAccount, setLoggedInUser, readRegistrationDraft, writeRegistrationDraft, clearRegistrationDraft, normalizeAccountId, saveProfile } from './AuthService'
+import { accountExists, registerAccount, setLoggedInUser, readRegistrationDraft, writeRegistrationDraft, clearRegistrationDraft, normalizeAccountId, saveProfile, findAccountIdByIdentifier, getAccountRecoveryEmail } from './AuthService'
+import { XIcon } from './Icons'
 
 type Props = {
   open: boolean
@@ -16,6 +17,7 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
 
   // registration fields (page 1)
   const [username, setUsername] = useState('')
+  const [recoveryEmail, setRecoveryEmail] = useState('')
   const [preferredName, setPreferredName] = useState('')
   const [yearOfBirth, setYearOfBirth] = useState('')
   const [phone, setPhone] = useState('')
@@ -35,15 +37,17 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
 
   const handleLogin = () => {
     setError(null)
-    const normalized = normalizeAccountId(id.trim())
-    if (!normalized) {
-      setError('Enter your UNE username, email or phone')
+    const enteredIdentifier = id.trim()
+    const resolvedId = findAccountIdByIdentifier(enteredIdentifier)
+    const normalized = normalizeAccountId(enteredIdentifier)
+    if (!enteredIdentifier || !normalized) {
+      setError('Enter your username, email or phone')
       return
     }
     // Prototype: allow very loose auth. If account exists, log in regardless of password.
-    if (accountExists(normalized)) {
-      setLoggedInUser(normalized)
-      onLoginSuccess(normalized)
+    if (resolvedId && accountExists(resolvedId)) {
+      setLoggedInUser(resolvedId)
+      onLoginSuccess(resolvedId)
       clear()
       onClose()
       return
@@ -84,6 +88,7 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
     setError(null)
 
     const enteredUsername = username.trim().toLowerCase()
+    const email = recoveryEmail.trim().toLowerCase()
     const name = preferredName.trim()
     const yob = yearOfBirth.trim()
     const ph = phone.trim()
@@ -96,6 +101,14 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
     }
     if (!/^[a-z0-9._-]{3,}$/.test(enteredUsername)) {
       setError('Username must be at least 3 characters and use only letters, numbers, dots, underscores or hyphens')
+      return
+    }
+    if (!email) {
+      setError('Enter an email address')
+      return
+    }
+    if (!isValidEmail(email)) {
+      setError('Enter a valid email address')
       return
     }
     if (!name) {
@@ -114,7 +127,7 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
     }
     // Prototype: do not enforce password complexity. Passwords are optional/loose.
 
-    registerAccount(identifier)
+    registerAccount(identifier, email)
     saveProfile({
       id: identifier,
       username: enteredUsername,
@@ -137,6 +150,7 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
     setRegisteredIdentifier(identifier)
     // clear registration fields
     setUsername('')
+    setRecoveryEmail('')
     setPreferredName('')
     setYearOfBirth('')
     setPhone('')
@@ -176,7 +190,9 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
       setError('Enter your username, email or phone to reset')
       return
     }
-    setError('Password reset link (prototype) sent to ' + id.trim())
+    const resolvedId = findAccountIdByIdentifier(id.trim())
+    const recoveryTarget = resolvedId ? getAccountRecoveryEmail(resolvedId) : ''
+    setError('Password reset link (prototype) sent to ' + (recoveryTarget || id.trim()))
   }
 
   useEffect(() => {
@@ -195,7 +211,7 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
       const draft = readRegistrationDraft()
       if (draft) {
         if (draft.username) setUsername(draft.username)
-        else if ((draft as any).email) setUsername(String((draft as any).email).split('@')[0])
+        if (draft.recoveryEmail) setRecoveryEmail(draft.recoveryEmail)
         if (draft.preferredName) setPreferredName(draft.preferredName)
         else if (draft.displayName) setPreferredName(draft.displayName)
         if (draft.yearOfBirth) setYearOfBirth(draft.yearOfBirth)
@@ -209,11 +225,11 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
   // persist registration draft whenever registration fields change
   useEffect(() => {
     try {
-      writeRegistrationDraft({ username, preferredName, yearOfBirth, phone })
+      writeRegistrationDraft({ username, recoveryEmail, preferredName, yearOfBirth, phone })
     } catch (e) {
       // ignore
     }
-  }, [username, preferredName, yearOfBirth, phone])
+  }, [username, recoveryEmail, preferredName, yearOfBirth, phone])
 
   if (!open) return null
 
@@ -222,13 +238,13 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
       <div className="modal">
         <div className="modal-header">
           <h3>{mode === 'login' ? 'Login' : 'Register'}</h3>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">✕</button>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close"><XIcon size={16} /></button>
         </div>
 
         <div className="modal-body">
           {mode === 'login' ? (
             <>
-              <label className="input-label">UNE username, email or phone</label>
+              <label className="input-label">Username, email or phone</label>
               <input className="input" value={id} onChange={e => setId(e.target.value)} />
 
               <label className="input-label">Password</label>
@@ -237,8 +253,8 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
               {error && <div className="error">{error}</div>}
 
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                <button type="button" className="btn" onClick={handleLogin}>Login</button>
                 <button type="button" className="btn ghost" onClick={handleForgot}>Forgot password</button>
+                <button type="button" className="btn" onClick={handleLogin}>Login</button>
               </div>
 
               <div style={{ marginTop: 12, fontSize: 14, display: 'flex', justifyContent: 'center' }}>
@@ -269,10 +285,17 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
               ) : (
                 <>
                   <label className="input-label">Username</label>
-                  <input className="input" value={username} onChange={e => setUsername(e.target.value)} placeholder="e.g. username" />
+                  <input className="input" value={username} onChange={e => setUsername(e.target.value)} placeholder="What other users will see" />
 
                   <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
-                    Your account will use <strong>{username.trim() ? normalizeAccountId(username) : 'username@une.edu.au'}</strong>
+                    Your public username will be <strong>{username.trim() ? normalizeAccountId(username) : 'username'}</strong>
+                  </div>
+
+                  <label className="input-label">Email</label>
+                  <input className="input" value={recoveryEmail} onChange={e => setRecoveryEmail(e.target.value)} placeholder="Used for verification and account recovery" />
+
+                  <div style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
+                    This email stays private and is only used for verification and account recovery.
                   </div>
 
                   <label className="input-label">Preferred name</label>
@@ -293,12 +316,12 @@ export default function AuthModal({ open, onClose, onLoginSuccess, initialMode }
                   {error && <div className="error">{error}</div>}
 
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    <button type="button" className="btn" onClick={handleRegister}>Create account</button>
                     <button type="button" className="btn ghost" onClick={() => setMode('login')}>Back to login</button>
+                    <button type="button" className="btn" onClick={handleRegister}>Create account</button>
                   </div>
 
                   <div style={{ marginTop: 12, fontSize: 12 }}>
-                    Password is optional for this prototype. Public identity uses your username; hosts can see your preferred name when you apply.
+                    Password is optional for this prototype. Public identity uses your username; hosts can see your preferred name when you apply. Your email is private and only used for verification and account recovery.
                   </div>
 
                   <div style={{ marginTop: 10, fontSize: 12 }}>
