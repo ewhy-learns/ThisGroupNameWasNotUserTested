@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react'
 // Vite config for a mobile-first React app
 export default defineConfig({
   plugins: [react()],
+  base: process.env.VITE_BASE_PATH || '/',
   server: {
     port: 5173,
     host: true,
@@ -11,4 +12,3 @@ export default defineConfig({
     allowedHosts: ['.ngrok-free.dev', '.ngrok.io']
   }
 })
-
